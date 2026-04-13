@@ -233,7 +233,16 @@
             'posthoc': 'ph',
             'bootstrap': 'boot',
             'zscore': 'zs',
-            'multicollinearity': 'vifp'
+            'multicollinearity': 'vifp',
+            'charts': 'chart',
+            'partial-corr': 'pcor',
+            'hierarchical-reg': 'hreg',
+            'roc': 'roc',
+            'icc': 'icc',
+            'split-half': 'sh',
+            'mcnemar': 'mcn',
+            'fisher-exact': 'fe',
+            'cochran-q': 'cq'
         };
     }
 
@@ -409,6 +418,23 @@
             {id: 'boot-picker', filter: 'numeric', label: 'เลือกตัวแปร'},
             {id: 'zs-picker', filter: 'numeric', label: 'เลือกตัวแปร'},
             {id: 'vifp-picker', filter: 'numeric', label: 'เลือกตัวแปร (2+)'},
+            // Charts & New SPSS features
+            {id: 'chart-picker', filter: 'numeric', label: 'เลือกตัวแปร'},
+            {id: 'pcor-x-picker', filter: 'numeric', label: 'Variable X'},
+            {id: 'pcor-y-picker', filter: 'numeric', label: 'Variable Y'},
+            {id: 'pcor-ctrl-picker', filter: 'numeric', label: 'Control Variables'},
+            {id: 'hreg-dv-picker', filter: 'numeric', label: 'ตัวแปรตาม (DV)'},
+            {id: 'hreg-b1-picker', filter: 'numeric', label: 'Block 1 IVs'},
+            {id: 'hreg-b2-picker', filter: 'numeric', label: 'Block 2 IVs'},
+            {id: 'roc-actual-picker', filter: 'numeric', label: 'Actual (0/1)'},
+            {id: 'roc-pred-picker', filter: 'numeric', label: 'Predicted Prob'},
+            {id: 'icc-picker', filter: 'numeric', label: 'Rater/Measure Variables'},
+            {id: 'sh-picker', filter: 'numeric', label: 'เลือก Items'},
+            {id: 'mcn-before-picker', filter: 'all', label: 'Before (0/1)'},
+            {id: 'mcn-after-picker', filter: 'all', label: 'After (0/1)'},
+            {id: 'fe-var1-picker', filter: 'all', label: 'Variable 1'},
+            {id: 'fe-var2-picker', filter: 'all', label: 'Variable 2'},
+            {id: 'cq-picker', filter: 'numeric', label: 'Conditions (0/1, 3+)'},
         ];
         pickerConfigs.forEach(function(cfg) {
             var el = document.getElementById(cfg.id);
@@ -955,6 +981,15 @@
                 case 'bootstrap': runBootstrap(); break;
                 case 'zscore': runZScore(); break;
                 case 'multicollinearity': runVIF(); break;
+                case 'charts': runCharts(); break;
+                case 'partial-corr': runPartialCorr(); break;
+                case 'hierarchical-reg': runHierarchicalReg(); break;
+                case 'roc': runROC(); break;
+                case 'icc': runICC(); break;
+                case 'split-half': runSplitHalf(); break;
+                case 'mcnemar': runMcNemar(); break;
+                case 'fisher-exact': runFisherExact(); break;
+                case 'cochran-q': runCochranQ(); break;
                 default:
                     alert('Analysis type "' + type + '" is not yet implemented.');
             }
@@ -2932,6 +2967,323 @@
 
         state.results['vifp'] = { data: rows, title: 'Multicollinearity Analysis (VIF)', extras: extras };
         displayResults('vifp');
+    }
+
+    // =========================================================================
+    // Charts & Visualization
+    // =========================================================================
+
+    function runCharts() {
+        var vars = getCheckedVars('chart-picker');
+        if (vars.length === 0) { alert('กรุณาเลือกตัวแปร'); return; }
+        var chartType = getSelectValue('chart-type') || 'histogram';
+        var canvas = document.getElementById('chart-canvas');
+        if (!canvas) return;
+
+        // Destroy previous chart
+        if (window._currentChart) window._currentChart.destroy();
+
+        var values = getColumnData(vars[0], true);
+
+        if (chartType === 'histogram') {
+            var nBins = Math.min(Math.ceil(Math.sqrt(values.length)), 30);
+            var min = Math.min.apply(null, values), max = Math.max.apply(null, values);
+            var binW = (max - min) / nBins || 1;
+            var bins = []; for(var i=0;i<nBins;i++) bins.push({lo:min+i*binW,hi:min+(i+1)*binW,count:0});
+            values.forEach(function(v){for(var i=0;i<bins.length;i++){if(v>=bins[i].lo&&(i===bins.length-1?v<=bins[i].hi:v<bins[i].hi)){bins[i].count++;break;}}});
+            window._currentChart = new Chart(canvas, {
+                type: 'bar',
+                data: { labels: bins.map(function(b){return fmt(b.lo,1)+'-'+fmt(b.hi,1);}), datasets: [{label:vars[0],data:bins.map(function(b){return b.count;}),backgroundColor:'rgba(37,99,235,0.6)',borderColor:'#2563eb',borderWidth:1}] },
+                options: { responsive:true, plugins:{title:{display:true,text:'Histogram: '+vars[0]}} }
+            });
+        } else if (chartType === 'boxplot') {
+            var datasets = vars.map(function(v,i){
+                var d = getColumnData(v,true).sort(function(a,b){return a-b;});
+                var q1=d[Math.floor(d.length*0.25)],med=d[Math.floor(d.length*0.5)],q3=d[Math.floor(d.length*0.75)];
+                var colors = ['rgba(37,99,235,0.6)','rgba(5,150,105,0.6)','rgba(220,38,38,0.6)','rgba(124,58,237,0.6)'];
+                return {label:v,data:[{min:d[0],q1:q1,median:med,q3:q3,max:d[d.length-1]}],backgroundColor:colors[i%4]};
+            });
+            // Fallback: show as bar chart with min/q1/median/q3/max
+            var labels = ['Min','Q1','Median','Q3','Max'];
+            var ds = vars.map(function(v,i){
+                var d = getColumnData(v,true).sort(function(a,b){return a-b;});
+                var colors = ['rgba(37,99,235,0.6)','rgba(5,150,105,0.6)','rgba(220,38,38,0.6)'];
+                return {label:v,data:[d[0],d[Math.floor(d.length*0.25)],d[Math.floor(d.length*0.5)],d[Math.floor(d.length*0.75)],d[d.length-1]],backgroundColor:colors[i%3]};
+            });
+            window._currentChart = new Chart(canvas, {
+                type:'bar', data:{labels:labels,datasets:ds},
+                options:{responsive:true,plugins:{title:{display:true,text:'Box Plot Summary'}}}
+            });
+        } else if (chartType === 'scatter' && vars.length >= 2) {
+            var xVals = getColumnData(vars[0],true), yVals = getColumnData(vars[1],true);
+            var n = Math.min(xVals.length,yVals.length);
+            var pts = []; for(var i=0;i<n;i++) pts.push({x:xVals[i],y:yVals[i]});
+            window._currentChart = new Chart(canvas, {
+                type:'scatter', data:{datasets:[{label:vars[0]+' vs '+vars[1],data:pts,backgroundColor:'rgba(37,99,235,0.5)',pointRadius:4}]},
+                options:{responsive:true,plugins:{title:{display:true,text:'Scatter: '+vars[0]+' vs '+vars[1]}},scales:{x:{title:{display:true,text:vars[0]}},y:{title:{display:true,text:vars[1]}}}}
+            });
+        } else if (chartType === 'bar') {
+            var ds = vars.map(function(v,i){
+                var d = Stats.descriptive(getColumnData(v,true));
+                var colors = ['rgba(37,99,235,0.7)','rgba(5,150,105,0.7)','rgba(220,38,38,0.7)','rgba(124,58,237,0.7)'];
+                return {label:v,data:[d.mean],backgroundColor:colors[i%4],borderWidth:1};
+            });
+            window._currentChart = new Chart(canvas, {
+                type:'bar', data:{labels:['Mean'],datasets:ds},
+                options:{responsive:true,plugins:{title:{display:true,text:'Mean Comparison'}}}
+            });
+        }
+    }
+
+    // =========================================================================
+    // Partial Correlation
+    // =========================================================================
+
+    function runPartialCorr() {
+        var xVar = getPickerValue('pcor-x-picker','pcor-x');
+        var yVar = getPickerValue('pcor-y-picker','pcor-y');
+        var ctrlVars = getCheckedVars('pcor-ctrl-picker');
+        if (!xVar || !yVar) { alert('กรุณาเลือก X และ Y'); return; }
+
+        var x = getColumnData(xVar,true), y = getColumnData(yVar,true);
+        var controls = ctrlVars.map(function(v){return getColumnData(v,true);});
+
+        var zeroOrder = Stats.correlation([x,y],[xVar,yVar],'pearson');
+        var result = Stats.partialCorrelation(x,y,controls.length>0?controls:null);
+        if (!result) { alert('ไม่สามารถคำนวณได้'); return; }
+
+        var extras = [];
+        if (zeroOrder && zeroOrder.pairs) {
+            extras.push({title:'Zero-Order Correlation',data:[{
+                Variables:xVar+' & '+yVar, r:fmt(zeroOrder.pairs[0].r), 'p-value':Stats.formatPValue(zeroOrder.pairs[0].p)
+            }]});
+        }
+
+        var rows = [{
+            'Variable X':xVar, 'Variable Y':yVar,
+            'Control':ctrlVars.join(', ')||'None',
+            'Partial r':fmt(result.r), 'r²':fmt(result.rSquared),
+            'df':result.df, 't':fmt(result.t),
+            'p-value':Stats.formatPValue(result.p),
+            'Sig.':result.p<0.05?'✓':''
+        }];
+
+        state.results['pcor'] = {data:rows, title:'Partial Correlation', extras:extras};
+        displayResults('pcor');
+    }
+
+    // =========================================================================
+    // Hierarchical Regression
+    // =========================================================================
+
+    function runHierarchicalReg() {
+        var dv = getPickerValue('hreg-dv-picker','hreg-dv');
+        var b1Vars = getCheckedVars('hreg-b1-picker');
+        var b2Vars = getCheckedVars('hreg-b2-picker');
+        if (!dv || b1Vars.length===0) { alert('กรุณาเลือก DV และ Block 1'); return; }
+
+        var y = getColumnData(dv,true);
+        var blocks = [b1Vars.map(function(v){return getColumnData(v,true);})];
+        var names = [b1Vars];
+        if (b2Vars.length > 0) {
+            blocks.push(b2Vars.map(function(v){return getColumnData(v,true);}));
+            names.push(b2Vars);
+        }
+
+        var steps = Stats.hierarchicalRegression(y, blocks, names);
+        if (!steps || steps.length === 0) { alert('ไม่สามารถวิเคราะห์ได้'); return; }
+
+        var modelRows = steps.map(function(s) {
+            return {
+                'Step':s.step, 'R':fmt(s.r), 'R²':fmt(s.rSquared), 'Adj R²':fmt(s.adjRSquared),
+                'R² Change':fmt(s.r2Change), 'F Change':fmt(s.fChange),
+                'df1':s.df1Change, 'df2':s.df2Change,
+                'Sig. F Change':Stats.formatPValue(s.pChange),
+                'Vars Added':s.varsAdded.join(', ')
+            };
+        });
+
+        var extras = [];
+        steps.forEach(function(s) {
+            if (s.coefficients) {
+                var coefRows = s.coefficients.map(function(c){
+                    return {Variable:c.variable,B:fmt(c.b),'S.E.':fmt(c.se),t:fmt(c.t),'p-value':Stats.formatPValue(c.p),'95% CI':c.ci95||''};
+                });
+                extras.push({title:'Step '+s.step+' Coefficients',data:coefRows});
+            }
+        });
+
+        state.results['hreg'] = {data:modelRows, title:'Hierarchical Regression — Model Summary', extras:extras};
+        displayResults('hreg');
+    }
+
+    // =========================================================================
+    // ROC Curve / AUC
+    // =========================================================================
+
+    function runROC() {
+        var actualVar = getPickerValue('roc-actual-picker','roc-actual');
+        var predVar = getPickerValue('roc-pred-picker','roc-pred');
+        if (!actualVar || !predVar) { alert('กรุณาเลือก Actual และ Predicted'); return; }
+
+        var actual = getColumnData(actualVar,true).map(function(v){return v>=0.5?1:0;});
+        var predicted = getColumnData(predVar,true);
+        var n = Math.min(actual.length,predicted.length);
+        actual=actual.slice(0,n); predicted=predicted.slice(0,n);
+
+        var result = Stats.roc(actual,predicted);
+        if (!result) { alert('ไม่สามารถวิเคราะห์ได้'); return; }
+
+        // Draw ROC curve
+        var canvas = document.getElementById('roc-canvas');
+        if (canvas && window.Chart) {
+            if (window._rocChart) window._rocChart.destroy();
+            var pts = result.points.map(function(p){return {x:p.fpr,y:p.tpr};});
+            window._rocChart = new Chart(canvas, {
+                type:'scatter',
+                data:{datasets:[
+                    {label:'ROC Curve (AUC='+fmt(result.auc,3)+')',data:pts,showLine:true,fill:false,borderColor:'#2563eb',backgroundColor:'rgba(37,99,235,0.1)',pointRadius:0,borderWidth:2},
+                    {label:'Reference',data:[{x:0,y:0},{x:1,y:1}],showLine:true,borderColor:'#dc2626',borderDash:[5,5],pointRadius:0,borderWidth:1}
+                ]},
+                options:{responsive:true,scales:{x:{title:{display:true,text:'1 - Specificity (FPR)'},min:0,max:1},y:{title:{display:true,text:'Sensitivity (TPR)'},min:0,max:1}},plugins:{title:{display:true,text:'ROC Curve'}}}
+            });
+        }
+
+        var rows = [{
+            'AUC':fmt(result.auc,3), 'Interpretation':result.interpretation,
+            'Optimal Threshold':fmt(result.optimalThreshold,3),
+            'Sensitivity':fmt(result.sensitivity,3), 'Specificity':fmt(result.specificity,3),
+            'PPV':fmt(result.ppv,3), 'NPV':fmt(result.npv,3),
+            'Accuracy':fmt(result.accuracy*100,1)+'%'
+        }];
+
+        state.results['roc'] = {data:rows, title:'ROC Analysis'};
+        displayResults('roc');
+    }
+
+    // =========================================================================
+    // ICC
+    // =========================================================================
+
+    function runICC() {
+        var vars = getCheckedVars('icc-picker');
+        if (vars.length < 2) { alert('กรุณาเลือกตัวแปรอย่างน้อย 2 ตัว'); return; }
+        var dataArrays = vars.map(function(v){return getColumnData(v,true);});
+        var result = Stats.icc(dataArrays);
+        if (!result) { alert('ไม่สามารถคำนวณ ICC ได้'); return; }
+
+        var rows = [
+            {Type:result.icc1.type, ICC:fmt(result.icc1.value), Interpretation:result.icc1.interpretation},
+            {Type:result.icc2.type, ICC:fmt(result.icc2.value), Interpretation:result.icc2.interpretation},
+            {Type:result.icc3.type, ICC:fmt(result.icc3.value), Interpretation:result.icc3.interpretation}
+        ];
+
+        state.results['icc'] = {data:rows, title:'ICC (Intraclass Correlation Coefficient)', extras:[{title:'ANOVA Components',data:[{
+            Subjects:result.n, Raters:result.k, MSB:fmt(result.MSB), MSW:fmt(result.MSW), MSR:fmt(result.MSR), MSE:fmt(result.MSE)
+        }]}]};
+        displayResults('icc');
+    }
+
+    // =========================================================================
+    // Split-Half Reliability
+    // =========================================================================
+
+    function runSplitHalf() {
+        var vars = getCheckedVars('sh-picker');
+        if (vars.length < 2) { alert('กรุณาเลือกอย่างน้อย 2 Items'); return; }
+        var dataArrays = vars.map(function(v){return getColumnData(v,true);});
+        var result = Stats.splitHalf(dataArrays);
+        if (!result) { alert('ไม่สามารถคำนวณได้'); return; }
+
+        var rows = [{
+            'Split-Half r':fmt(result.rHalf), 'Spearman-Brown':fmt(result.spearmanBrown),
+            'Guttman Split-Half':fmt(result.guttman), 'N Items':result.nItems, 'N Cases':result.nCases
+        }];
+
+        state.results['sh'] = {data:rows, title:'Split-Half Reliability'};
+        displayResults('sh');
+    }
+
+    // =========================================================================
+    // McNemar Test
+    // =========================================================================
+
+    function runMcNemar() {
+        var beforeVar = getPickerValue('mcn-before-picker','mcn-before');
+        var afterVar = getPickerValue('mcn-after-picker','mcn-after');
+        if (!beforeVar || !afterVar) { alert('กรุณาเลือกตัวแปร Before และ After'); return; }
+
+        var before = getColumnData(beforeVar,true).map(function(v){return v>=0.5?1:0;});
+        var after = getColumnData(afterVar,true).map(function(v){return v>=0.5?1:0;});
+        var n = Math.min(before.length,after.length);
+
+        var result = Stats.mcnemar(before.slice(0,n), after.slice(0,n));
+        if (!result) { alert('ไม่สามารถวิเคราะห์ได้'); return; }
+
+        var extras = [{title:'2x2 Contingency Table',data:[
+            {'':afterVar+'=1', [beforeVar+'=1']:result.a, [beforeVar+'=0']:result.c},
+            {'':afterVar+'=0', [beforeVar+'=1']:result.b, [beforeVar+'=0']:result.d}
+        ]}];
+
+        var rows = [{
+            'Chi-Square':fmt(result.chi2), 'df':result.df,
+            'p-value':Stats.formatPValue(result.p),
+            'Discordant Pairs':result.discordant, 'N':result.n,
+            'Sig.':result.significant?'✓':''
+        }];
+
+        state.results['mcn'] = {data:rows, title:'McNemar Test', extras:extras};
+        displayResults('mcn');
+    }
+
+    // =========================================================================
+    // Fisher's Exact Test
+    // =========================================================================
+
+    function runFisherExact() {
+        var var1 = getPickerValue('fe-var1-picker','fe-var1');
+        var var2 = getPickerValue('fe-var2-picker','fe-var2');
+        if (!var1 || !var2) { alert('กรุณาเลือกตัวแปร 2 ตัว'); return; }
+
+        var d1 = state.data.map(function(r){return r[var1];}), d2 = state.data.map(function(r){return r[var2];});
+        var ct = Stats.crossTab(d1,d2);
+        if (!ct || ct.rowLabels.length!==2 || ct.colLabels.length!==2) { alert('Fisher\'s Exact ต้องการตาราง 2x2'); return; }
+
+        var result = Stats.fisherExact(ct.observed[0][0],ct.observed[0][1],ct.observed[1][0],ct.observed[1][1]);
+        if (!result) { alert('ไม่สามารถคำนวณได้'); return; }
+
+        var rows = [{
+            'p (exact)':Stats.formatPValue(result.pExact),
+            'p (two-tailed)':Stats.formatPValue(result.pTwoTail),
+            'Odds Ratio':fmt(result.oddsRatio), 'N':result.n,
+            'Sig.':result.pTwoTail<0.05?'✓':''
+        }];
+
+        state.results['fe'] = {data:rows, title:"Fisher's Exact Test"};
+        displayResults('fe');
+    }
+
+    // =========================================================================
+    // Cochran's Q Test
+    // =========================================================================
+
+    function runCochranQ() {
+        var vars = getCheckedVars('cq-picker');
+        if (vars.length < 3) { alert('กรุณาเลือกอย่างน้อย 3 ตัวแปร'); return; }
+        var dataArrays = vars.map(function(v){return getColumnData(v,true).map(function(x){return x>=0.5?1:0;});});
+        var result = Stats.cochranQ(dataArrays);
+        if (!result) { alert('ไม่สามารถคำนวณได้'); return; }
+
+        var extras = [{title:'Proportions',data:vars.map(function(v,i){
+            var sum = dataArrays[i].reduce(function(a,b){return a+b;},0);
+            return {Variable:v, 'Success (1)':sum, 'Total':dataArrays[i].length, 'Proportion':fmt(sum/dataArrays[i].length,3)};
+        })}];
+
+        var rows = [{"Cochran's Q":fmt(result.Q), df:result.df, 'p-value':Stats.formatPValue(result.p),
+                     'k (conditions)':result.k, 'N':result.n, 'Sig.':result.significant?'✓':''}];
+
+        state.results['cq'] = {data:rows, title:"Cochran's Q Test", extras:extras};
+        displayResults('cq');
     }
 
     // =========================================================================

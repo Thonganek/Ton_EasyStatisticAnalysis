@@ -1896,4 +1896,373 @@
         return 'Unacceptable';
     };
 
+    // =========================================================================
+    // Partial Correlation
+    // =========================================================================
+
+    Stats.partialCorrelation = function(x, y, controls) {
+        // x, y = arrays of values; controls = array of arrays (control variables)
+        if (!x || !y || x.length < 3) return null;
+        var n = x.length;
+
+        function residuals(dep, predictors) {
+            var m = dep.reduce(function(a,b){return a+b;},0)/n;
+            if (!predictors || predictors.length === 0) return dep.map(function(v){return v-m;});
+            // Simple OLS residuals
+            var k = predictors.length;
+            // Use correlation-based residuals for simplicity
+            var resid = dep.slice();
+            predictors.forEach(function(pred) {
+                var mp = pred.reduce(function(a,b){return a+b;},0)/n;
+                var md = resid.reduce(function(a,b){return a+b;},0)/n;
+                var num=0, den=0;
+                for(var i=0;i<n;i++){num+=(pred[i]-mp)*(resid[i]-md); den+=(pred[i]-mp)*(pred[i]-mp);}
+                var b = den>0 ? num/den : 0;
+                var a = md - b*mp;
+                resid = resid.map(function(v,i){return v - (a + b*pred[i]);});
+            });
+            return resid;
+        }
+
+        var rx = residuals(x, controls);
+        var ry = residuals(y, controls);
+        var mx=0,my=0; for(var i=0;i<n;i++){mx+=rx[i];my+=ry[i];} mx/=n;my/=n;
+        var num=0,dx=0,dy=0;
+        for(var i=0;i<n;i++){num+=(rx[i]-mx)*(ry[i]-my);dx+=(rx[i]-mx)*(rx[i]-mx);dy+=(ry[i]-my)*(ry[i]-my);}
+        var r = (dx>0&&dy>0) ? num/Math.sqrt(dx*dy) : 0;
+        var df = n - 2 - (controls ? controls.length : 0);
+        var t = df>0 ? r*Math.sqrt(df/(1-r*r+1e-10)) : 0;
+        var p = df>0 ? 2*(1-jStat.studentt.cdf(Math.abs(t),df)) : 1;
+        return {r:r, t:t, df:df, p:p, rSquared:r*r};
+    };
+
+    // =========================================================================
+    // ICC (Intraclass Correlation Coefficient)
+    // =========================================================================
+
+    Stats.icc = function(dataArrays) {
+        // dataArrays = array of arrays, each array is one rater/measure
+        if (!dataArrays || dataArrays.length < 2) return null;
+        var k = dataArrays.length; // number of raters
+        var n = dataArrays[0].length; // number of subjects
+
+        var grandMean = 0, total = 0;
+        dataArrays.forEach(function(arr){arr.forEach(function(v){grandMean+=v;total++;});});
+        grandMean /= total;
+
+        // Subject means
+        var subjectMeans = [];
+        for(var i=0;i<n;i++){
+            var s=0; for(var j=0;j<k;j++) s+=dataArrays[j][i];
+            subjectMeans.push(s/k);
+        }
+
+        // Rater means
+        var raterMeans = dataArrays.map(function(arr){return arr.reduce(function(a,b){return a+b;},0)/n;});
+
+        // SS Between subjects
+        var SSB = 0;
+        for(var i=0;i<n;i++) SSB += k*(subjectMeans[i]-grandMean)*(subjectMeans[i]-grandMean);
+
+        // SS Within subjects
+        var SSW = 0;
+        for(var i=0;i<n;i++) for(var j=0;j<k;j++) SSW += (dataArrays[j][i]-subjectMeans[i])*(dataArrays[j][i]-subjectMeans[i]);
+
+        // SS Raters
+        var SSR = 0;
+        for(var j=0;j<k;j++) SSR += n*(raterMeans[j]-grandMean)*(raterMeans[j]-grandMean);
+
+        // SS Error
+        var SSE = SSW - SSR;
+
+        var MSB = SSB/(n-1);
+        var MSW = SSW/(n*(k-1));
+        var MSR = SSR/(k-1);
+        var MSE = SSE/((n-1)*(k-1));
+
+        // ICC(1,1) - one-way random
+        var icc1 = (MSB-MSW)/(MSB+(k-1)*MSW);
+        // ICC(2,1) - two-way random, single measures
+        var icc2 = (MSB-MSE)/(MSB+(k-1)*MSE+k*(MSR-MSE)/n);
+        // ICC(3,1) - two-way mixed, single measures
+        var icc3 = (MSB-MSE)/(MSB+(k-1)*MSE);
+
+        var interp = function(v){return v>=0.9?'Excellent':v>=0.75?'Good':v>=0.5?'Moderate':'Poor';};
+
+        return {
+            icc1:{value:icc1,interpretation:interp(icc1),type:'One-way random, single'},
+            icc2:{value:icc2,interpretation:interp(icc2),type:'Two-way random, single'},
+            icc3:{value:icc3,interpretation:interp(icc3),type:'Two-way mixed, single'},
+            n:n, k:k, MSB:MSB, MSW:MSW, MSR:MSR, MSE:MSE
+        };
+    };
+
+    // =========================================================================
+    // Split-Half Reliability
+    // =========================================================================
+
+    Stats.splitHalf = function(dataArrays) {
+        if (!dataArrays || dataArrays.length < 2) return null;
+        var n = dataArrays[0].length;
+        var k = dataArrays.length;
+        // Split odd/even
+        var odd=[], even=[];
+        for(var i=0;i<n;i++){var so=0,se=0;for(var j=0;j<k;j++){if(j%2===0)se+=dataArrays[j][i];else so+=dataArrays[j][i];}odd.push(so);even.push(se);}
+        // Correlation between halves
+        var mo=odd.reduce(function(a,b){return a+b;},0)/n;
+        var me=even.reduce(function(a,b){return a+b;},0)/n;
+        var num=0,do2=0,de2=0;
+        for(var i=0;i<n;i++){num+=(odd[i]-mo)*(even[i]-me);do2+=(odd[i]-mo)*(odd[i]-mo);de2+=(even[i]-me)*(even[i]-me);}
+        var rHalf = (do2>0&&de2>0)?num/Math.sqrt(do2*de2):0;
+        // Spearman-Brown
+        var spearmanBrown = 2*rHalf/(1+Math.abs(rHalf));
+        // Guttman split-half
+        var varOdd=do2/(n-1), varEven=de2/(n-1);
+        var totalScores = []; for(var i=0;i<n;i++){var s=0;for(var j=0;j<k;j++)s+=dataArrays[j][i];totalScores.push(s);}
+        var mt=totalScores.reduce(function(a,b){return a+b;},0)/n;
+        var varTotal=0;for(var i=0;i<n;i++)varTotal+=(totalScores[i]-mt)*(totalScores[i]-mt);varTotal/=(n-1);
+        var guttman = varTotal>0 ? 2*(1-(varOdd+varEven)/varTotal) : 0;
+
+        return {rHalf:rHalf, spearmanBrown:spearmanBrown, guttman:guttman, nItems:k, nCases:n};
+    };
+
+    // =========================================================================
+    // Hierarchical Regression
+    // =========================================================================
+
+    Stats.hierarchicalRegression = function(y, blocks, varNames) {
+        // blocks = [[iv1,iv2],[iv3,iv4]] each block is array of arrays
+        // Returns model comparison for each step
+        if (!y || !blocks || blocks.length === 0) return null;
+        var n = y.length;
+        var steps = [];
+        var cumIVs = [];
+        var cumNames = [];
+        var prevR2 = 0;
+
+        for (var step = 0; step < blocks.length; step++) {
+            cumIVs = cumIVs.concat(blocks[step]);
+            cumNames = cumNames.concat(varNames[step] || blocks[step].map(function(_,i){return 'X'+(cumIVs.length-blocks[step].length+i+1);}));
+
+            var result = Stats.linearRegression(y, cumIVs, cumNames);
+            if (!result) continue;
+
+            var r2Change = result.rSquared - prevR2;
+            var dfChange = blocks[step].length;
+            var df2 = n - cumIVs.length - 1;
+            var fChange = df2>0 ? (r2Change/dfChange)/((1-result.rSquared)/df2) : 0;
+            var pChange = fChange>0 ? 1-jStat.centralF.cdf(fChange, dfChange, df2) : 1;
+
+            steps.push({
+                step: step+1,
+                r: result.r, rSquared: result.rSquared, adjRSquared: result.adjRSquared,
+                r2Change: r2Change, fChange: fChange, df1Change: dfChange, df2Change: df2, pChange: pChange,
+                f: result.f, fP: result.fP,
+                coefficients: result.coefficients,
+                varsAdded: varNames[step] || []
+            });
+            prevR2 = result.rSquared;
+        }
+        return steps;
+    };
+
+    // =========================================================================
+    // ROC Curve / AUC
+    // =========================================================================
+
+    Stats.roc = function(actual, predicted) {
+        // actual = array of 0/1, predicted = array of probabilities
+        if (!actual || !predicted || actual.length !== predicted.length) return null;
+        var n = actual.length;
+
+        // Sort by predicted descending
+        var pairs = [];
+        for(var i=0;i<n;i++) pairs.push({actual:actual[i], pred:predicted[i]});
+        pairs.sort(function(a,b){return b.pred-a.pred;});
+
+        var nPos = actual.filter(function(v){return v===1;}).length;
+        var nNeg = n - nPos;
+        if(nPos===0||nNeg===0) return null;
+
+        var points = [{fpr:0, tpr:0}];
+        var tp=0, fp=0;
+
+        for(var i=0;i<n;i++){
+            if(pairs[i].actual===1) tp++; else fp++;
+            points.push({fpr:fp/nNeg, tpr:tp/nPos, threshold:pairs[i].pred});
+        }
+
+        // AUC using trapezoidal rule
+        var auc = 0;
+        for(var i=1;i<points.length;i++){
+            auc += (points[i].fpr-points[i-1].fpr)*(points[i].tpr+points[i-1].tpr)/2;
+        }
+
+        // Youden's J - optimal threshold
+        var bestJ = -1, bestThreshold = 0.5;
+        points.forEach(function(pt){
+            var j = pt.tpr - pt.fpr;
+            if(j>bestJ){bestJ=j;bestThreshold=pt.threshold||0.5;}
+        });
+
+        // Sensitivity/Specificity at optimal threshold
+        var optTP=0,optFP=0,optTN=0,optFN=0;
+        for(var i=0;i<n;i++){
+            var pred = predicted[i]>=bestThreshold?1:0;
+            if(pred===1&&actual[i]===1)optTP++;
+            if(pred===1&&actual[i]===0)optFP++;
+            if(pred===0&&actual[i]===0)optTN++;
+            if(pred===0&&actual[i]===1)optFN++;
+        }
+
+        var interp = auc>=0.9?'Outstanding':auc>=0.8?'Excellent':auc>=0.7?'Acceptable':auc>=0.6?'Poor':'Fail';
+
+        return {
+            auc:auc, interpretation:interp, points:points,
+            optimalThreshold:bestThreshold, youdenJ:bestJ,
+            sensitivity:nPos>0?optTP/nPos:0, specificity:nNeg>0?optTN/nNeg:0,
+            ppv:(optTP+optFP)>0?optTP/(optTP+optFP):0,
+            npv:(optTN+optFN)>0?optTN/(optTN+optFN):0,
+            accuracy:(optTP+optTN)/n
+        };
+    };
+
+    // =========================================================================
+    // McNemar Test
+    // =========================================================================
+
+    Stats.mcnemar = function(before, after) {
+        if(!before||!after||before.length!==after.length) return null;
+        var n=before.length;
+        var a=0,b=0,c=0,d=0;
+        for(var i=0;i<n;i++){
+            if(before[i]===1&&after[i]===1)a++;
+            else if(before[i]===1&&after[i]===0)b++;
+            else if(before[i]===0&&after[i]===1)c++;
+            else d++;
+        }
+        var chi2=(b+c)>0?Math.pow(Math.abs(b-c)-1,2)/(b+c):0; // continuity correction
+        var p=1-jStat.chisquare.cdf(chi2,1);
+        return {a:a,b:b,c:c,d:d,chi2:chi2,df:1,p:p,n:n,
+                discordant:b+c,significant:p<0.05};
+    };
+
+    // =========================================================================
+    // Fisher's Exact Test (2x2)
+    // =========================================================================
+
+    Stats.fisherExact = function(a,b,c,d) {
+        var n=a+b+c+d;
+        function logFact(x){var s=0;for(var i=2;i<=x;i++)s+=Math.log(i);return s;}
+        var logP = logFact(a+b)+logFact(c+d)+logFact(a+c)+logFact(b+d)-logFact(n)-logFact(a)-logFact(b)-logFact(c)-logFact(d);
+        var pExact = Math.exp(logP);
+        // Two-tailed: sum probabilities <= pExact
+        var r1=a+b,r2=c+d,c1=a+c,c2=b+d;
+        var pTwoTail=0;
+        for(var aa=0;aa<=Math.min(r1,c1);aa++){
+            var bb=r1-aa,cc=c1-aa,dd=r2-cc;
+            if(bb<0||cc<0||dd<0)continue;
+            var lp=logFact(r1)+logFact(r2)+logFact(c1)+logFact(c2)-logFact(n)-logFact(aa)-logFact(bb)-logFact(cc)-logFact(dd);
+            var pp=Math.exp(lp);
+            if(pp<=pExact+1e-10) pTwoTail+=pp;
+        }
+        var or=(b*c)>0?(a*d)/(b*c):Infinity;
+        return {pExact:pExact,pTwoTail:Math.min(pTwoTail,1),oddsRatio:or,a:a,b:b,c:c,d:d,n:n};
+    };
+
+    // =========================================================================
+    // Cochran's Q Test
+    // =========================================================================
+
+    Stats.cochranQ = function(dataArrays) {
+        // dataArrays = array of arrays (each is 0/1 for each condition)
+        if(!dataArrays||dataArrays.length<3) return null;
+        var k=dataArrays.length, n=dataArrays[0].length;
+        var T=0; // Grand total
+        var Tj=[]; // Column totals
+        var Li=[]; // Row totals
+        for(var j=0;j<k;j++){var s=0;for(var i=0;i<n;i++)s+=dataArrays[j][i];Tj.push(s);T+=s;}
+        for(var i=0;i<n;i++){var s=0;for(var j=0;j<k;j++)s+=dataArrays[j][i];Li.push(s);}
+        var sumTj2=Tj.reduce(function(a,b){return a+b*b;},0);
+        var sumLi2=Li.reduce(function(a,b){return a+b*b;},0);
+        var sumLi=Li.reduce(function(a,b){return a+b;},0);
+        var Q=((k-1)*(k*sumTj2-T*T))/(k*sumLi-sumLi2);
+        if(isNaN(Q))Q=0;
+        var df=k-1;
+        var p=1-jStat.chisquare.cdf(Q,df);
+        return {Q:Q,df:df,p:p,k:k,n:n,significant:p<0.05};
+    };
+
+    // =========================================================================
+    // Games-Howell Post-hoc
+    // =========================================================================
+
+    Stats.gamesHowell = function(groups, groupNames) {
+        if(!groups||groups.length<2) return null;
+        var k=groups.length;
+        var pairs=[];
+        for(var i=0;i<k;i++){
+            for(var j=i+1;j<k;j++){
+                var ni=groups[i].length, nj=groups[j].length;
+                var mi=groups[i].reduce(function(a,b){return a+b;},0)/ni;
+                var mj=groups[j].reduce(function(a,b){return a+b;},0)/nj;
+                var vi=groups[i].reduce(function(a,b){return a+(b-mi)*(b-mi);},0)/(ni-1);
+                var vj=groups[j].reduce(function(a,b){return a+(b-mj)*(b-mj);},0)/(nj-1);
+                var se=Math.sqrt(vi/ni+vj/nj);
+                var t=se>0?(mi-mj)/se:0;
+                // Welch-Satterthwaite df
+                var num=Math.pow(vi/ni+vj/nj,2);
+                var den=Math.pow(vi/ni,2)/(ni-1)+Math.pow(vj/nj,2)/(nj-1);
+                var df=den>0?num/den:1;
+                var p=2*(1-jStat.studentt.cdf(Math.abs(t),df));
+                pairs.push({groupA:groupNames[i],groupB:groupNames[j],meanA:mi,meanB:mj,
+                            meanDiff:mi-mj,se:se,t:t,df:df,p:p,significant:p<0.05});
+            }
+        }
+        return pairs;
+    };
+
+    // =========================================================================
+    // LSD (Fisher's Least Significant Difference)
+    // =========================================================================
+
+    Stats.fisherLSD = function(groups, groupNames, alpha) {
+        alpha=alpha||0.05;
+        if(!groups||groups.length<2) return null;
+        var k=groups.length;
+        var allData=[];groups.forEach(function(g){allData=allData.concat(g);});
+        var N=allData.length, dfW=N-k;
+        var msW=0;
+        groups.forEach(function(g){var m=g.reduce(function(a,b){return a+b;},0)/g.length;g.forEach(function(v){msW+=(v-m)*(v-m);});});
+        msW=msW/dfW;
+        var tCrit=jStat.studentt.inv(1-alpha/2,dfW);
+        var pairs=[];
+        for(var i=0;i<k;i++){
+            for(var j=i+1;j<k;j++){
+                var ni=groups[i].length,nj=groups[j].length;
+                var mi=groups[i].reduce(function(a,b){return a+b;},0)/ni;
+                var mj=groups[j].reduce(function(a,b){return a+b;},0)/nj;
+                var se=Math.sqrt(msW*(1/ni+1/nj));
+                var t=(mi-mj)/se;
+                var p=2*(1-jStat.studentt.cdf(Math.abs(t),dfW));
+                var lsd=tCrit*se;
+                pairs.push({groupA:groupNames[i],groupB:groupNames[j],meanA:mi,meanB:mj,
+                            meanDiff:mi-mj,se:se,t:t,df:dfW,p:p,lsd:lsd,significant:Math.abs(mi-mj)>lsd});
+            }
+        }
+        return pairs;
+    };
+
+    // =========================================================================
+    // Omega Squared & Partial Eta Squared
+    // =========================================================================
+
+    Stats.omegaSquared = function(ssBetween, ssTotal, dfBetween, msWithin) {
+        return (ssBetween - dfBetween*msWithin) / (ssTotal + msWithin);
+    };
+
+    Stats.partialEtaSquared = function(ssBetween, ssError) {
+        return ssBetween / (ssBetween + ssError);
+    };
+
 })();

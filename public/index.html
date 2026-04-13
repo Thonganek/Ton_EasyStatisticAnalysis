@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="./css/style.css">
     <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jstat@latest/dist/jstat.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
     <script src="./js/stats.js" defer></script>
     <script src="./js/app.js" defer></script>
 </head>
@@ -163,11 +164,20 @@
                     <button class="menu-item" onclick="navigateTo('bootstrap')">Bootstrap CI</button>
                     <button class="menu-item" onclick="navigateTo('zscore')">Z-Score & Percentile</button>
                     <button class="menu-item" onclick="navigateTo('multicollinearity')">Multicollinearity (VIF)</button>
+                    <button class="menu-item" onclick="navigateTo('partial-corr')">Partial Correlation</button>
+                    <button class="menu-item" onclick="navigateTo('hierarchical-reg')">Hierarchical Regression</button>
+                    <button class="menu-item" onclick="navigateTo('roc')">ROC Curve / AUC</button>
+                    <button class="menu-item" onclick="navigateTo('icc')">ICC</button>
+                    <button class="menu-item" onclick="navigateTo('split-half')">Split-Half Reliability</button>
+                    <button class="menu-item" onclick="navigateTo('mcnemar')">McNemar Test</button>
+                    <button class="menu-item" onclick="navigateTo('fisher-exact')">Fisher's Exact Test</button>
+                    <button class="menu-item" onclick="navigateTo('cochran-q')">Cochran's Q Test</button>
                 </div>
             </div>
 
             <!-- AI Chat — Top Level -->
             <div class="sidebar-divider"></div>
+            <button class="menu-item menu-item-highlight" onclick="navigateTo('charts')">📊 Charts & Graphs</button>
             <button class="menu-item menu-item-highlight" onclick="navigateTo('ai-chat')">🤖 AI Statistical Chat</button>
             <button class="menu-item" onclick="navigateTo('ai-settings')">⚙️ AI Settings</button>
             <button class="menu-item" onclick="navigateTo('templates')">📦 Sample Templates</button>
@@ -2113,6 +2123,210 @@
             <button class="btn btn-export" onclick="exportExcel('vifp')">📥 Excel</button>
             <button class="btn btn-export" onclick="exportWord('vifp')">📥 Word</button>
         </div>
+    </div>
+</div>
+
+        <!-- ================================================== -->
+        <!-- PAGE: CHARTS & VISUALIZATION                        -->
+        <!-- ================================================== -->
+<div class="page" id="page-charts">
+    <h2 class="page-title">📊 Charts & Visualization</h2>
+    <details class="stat-guide"><summary>📖 Data Visualization</summary>
+        <div class="stat-guide-content"><p><strong>ประเภทกราฟ:</strong> Histogram, Boxplot, Q-Q Plot, Scatter Plot</p></div>
+    </details>
+    <div class="card">
+        <div class="form-group"><label>Select Variables</label>
+            <select id="chart-vars" class="var-select" multiple style="display:none"></select>
+            <div id="chart-picker"></div></div>
+        <div class="form-group"><label>Chart Type</label>
+            <select id="chart-type" class="form-select">
+                <option value="histogram">Histogram</option>
+                <option value="boxplot">Box Plot</option>
+                <option value="scatter">Scatter Plot (2 vars)</option>
+                <option value="bar">Bar Chart</option>
+            </select></div>
+        <button class="btn btn-primary" onclick="runAnalysis('charts')">Create Chart</button>
+    </div>
+    <div id="chart-display" style="max-width:700px;margin:20px auto">
+        <canvas id="chart-canvas"></canvas>
+    </div>
+</div>
+
+        <!-- ================================================== -->
+        <!-- PAGE: PARTIAL CORRELATION                           -->
+        <!-- ================================================== -->
+<div class="page" id="page-partial-corr">
+    <h2 class="page-title">📈 Partial Correlation</h2>
+    <details class="stat-guide"><summary>📖 เมื่อไหร่ควรใช้?</summary>
+        <div class="stat-guide-content">
+            <p><strong>วัตถุประสงค์:</strong> วิเคราะห์ความสัมพันธ์ระหว่าง 2 ตัวแปร โดยควบคุมอิทธิพลของตัวแปรที่ 3</p>
+            <p><strong>ตัวอย่าง:</strong> ความสัมพันธ์ระหว่าง GPA กับ ชั่วโมงเรียน โดยควบคุม IQ</p>
+        </div></details>
+    <div class="card">
+        <div class="form-group"><label>Variable X</label><select id="pcor-x" class="var-select" style="display:none"></select><div id="pcor-x-picker"></div></div>
+        <div class="form-group"><label>Variable Y</label><select id="pcor-y" class="var-select" style="display:none"></select><div id="pcor-y-picker"></div></div>
+        <div class="form-group"><label>Control Variables</label><select id="pcor-ctrl" class="var-select" multiple style="display:none"></select><div id="pcor-ctrl-picker"></div></div>
+        <button class="btn btn-primary" onclick="runAnalysis('partial-corr')">Run Analysis</button>
+    </div>
+    <div id="pcor-results" class="results-area"><div id="pcor-extras"></div><div id="pcor-table"></div>
+        <div class="ai-section"><div class="interp-options"><label class="form-label">📝 รูปแบบ</label><select id="pcor-interp-format" class="form-select interp-select"><option value="chapter4" selected>บทที่ 4</option><option value="explain">อธิบายง่าย</option></select></div>
+            <button class="btn btn-ai" onclick="aiAnalyze('pcor')">🤖 AI วิเคราะห์ผล</button><div id="pcor-ai-result" class="ai-result-box" style="display:none"></div></div>
+        <div class="export-area"><button class="btn btn-export" onclick="exportExcel('pcor')">📥 Excel</button><button class="btn btn-export" onclick="exportWord('pcor')">📥 Word</button></div>
+    </div>
+</div>
+
+        <!-- ================================================== -->
+        <!-- PAGE: HIERARCHICAL REGRESSION                       -->
+        <!-- ================================================== -->
+<div class="page" id="page-hierarchical-reg">
+    <h2 class="page-title">📈 Hierarchical Regression</h2>
+    <details class="stat-guide"><summary>📖 เมื่อไหร่ควรใช้?</summary>
+        <div class="stat-guide-content">
+            <p><strong>วัตถุประสงค์:</strong> วิเคราะห์การถดถอยแบบลำดับขั้น ดูว่าแต่ละ block เพิ่ม R² ได้เท่าไหร่</p>
+            <p><strong>ตัวอย่าง:</strong> Block 1: เพศ อายุ → Block 2: แรงจูงใจ ทัศนคติ → พยากรณ์ผลสัมฤทธิ์</p>
+        </div></details>
+    <div class="card">
+        <div class="form-group"><label>Dependent Variable (DV)</label><select id="hreg-dv" class="var-select" style="display:none"></select><div id="hreg-dv-picker"></div></div>
+        <div class="form-group"><label>Block 1 — IVs</label><select id="hreg-b1" class="var-select" multiple style="display:none"></select><div id="hreg-b1-picker"></div></div>
+        <div class="form-group"><label>Block 2 — IVs (เพิ่มเติม)</label><select id="hreg-b2" class="var-select" multiple style="display:none"></select><div id="hreg-b2-picker"></div></div>
+        <button class="btn btn-primary" onclick="runAnalysis('hierarchical-reg')">Run Analysis</button>
+    </div>
+    <div id="hreg-results" class="results-area"><div id="hreg-extras"></div><div id="hreg-table"></div>
+        <div class="ai-section"><div class="interp-options"><label class="form-label">📝 รูปแบบ</label><select id="hreg-interp-format" class="form-select interp-select"><option value="chapter4" selected>บทที่ 4</option><option value="explain">อธิบายง่าย</option></select></div>
+            <button class="btn btn-ai" onclick="aiAnalyze('hreg')">🤖 AI วิเคราะห์ผล</button><div id="hreg-ai-result" class="ai-result-box" style="display:none"></div></div>
+        <div class="export-area"><button class="btn btn-export" onclick="exportExcel('hreg')">📥 Excel</button><button class="btn btn-export" onclick="exportWord('hreg')">📥 Word</button></div>
+    </div>
+</div>
+
+        <!-- ================================================== -->
+        <!-- PAGE: ROC CURVE / AUC                               -->
+        <!-- ================================================== -->
+<div class="page" id="page-roc">
+    <h2 class="page-title">📈 ROC Curve / AUC</h2>
+    <details class="stat-guide"><summary>📖 เมื่อไหร่ควรใช้?</summary>
+        <div class="stat-guide-content">
+            <p><strong>วัตถุประสงค์:</strong> ประเมินความแม่นยำของ model ที่พยากรณ์ผลลัพธ์แบบ 2 ค่า</p>
+            <p><strong>ตัวอย่าง:</strong> ประเมิน model พยากรณ์การเป็นโรค (ป่วย/ไม่ป่วย)</p>
+        </div></details>
+    <div class="card">
+        <div class="form-group"><label>Actual (0/1)</label><select id="roc-actual" class="var-select" style="display:none"></select><div id="roc-actual-picker"></div></div>
+        <div class="form-group"><label>Predicted Probability</label><select id="roc-pred" class="var-select" style="display:none"></select><div id="roc-pred-picker"></div></div>
+        <button class="btn btn-primary" onclick="runAnalysis('roc')">Run ROC Analysis</button>
+    </div>
+    <div id="roc-chart" style="max-width:500px;margin:20px auto"><canvas id="roc-canvas"></canvas></div>
+    <div id="roc-results" class="results-area"><div id="roc-extras"></div><div id="roc-table"></div>
+        <div class="ai-section"><div class="interp-options"><label class="form-label">📝 รูปแบบ</label><select id="roc-interp-format" class="form-select interp-select"><option value="chapter4" selected>บทที่ 4</option><option value="explain">อธิบายง่าย</option></select></div>
+            <button class="btn btn-ai" onclick="aiAnalyze('roc')">🤖 AI วิเคราะห์ผล</button><div id="roc-ai-result" class="ai-result-box" style="display:none"></div></div>
+        <div class="export-area"><button class="btn btn-export" onclick="exportExcel('roc')">📥 Excel</button><button class="btn btn-export" onclick="exportWord('roc')">📥 Word</button></div>
+    </div>
+</div>
+
+        <!-- ================================================== -->
+        <!-- PAGE: ICC                                           -->
+        <!-- ================================================== -->
+<div class="page" id="page-icc">
+    <h2 class="page-title">📊 ICC (Intraclass Correlation)</h2>
+    <details class="stat-guide"><summary>📖 เมื่อไหร่ควรใช้?</summary>
+        <div class="stat-guide-content">
+            <p><strong>วัตถุประสงค์:</strong> วัดความสอดคล้องระหว่างผู้ประเมิน/การวัดซ้ำ</p>
+            <p><strong>ตัวอย่าง:</strong> ความสอดคล้องระหว่างผู้เชี่ยวชาญ 3 คน ในการให้คะแนน</p>
+        </div></details>
+    <div class="card">
+        <div class="form-group"><label>Select Rater/Measure Variables (2+)</label>
+            <select id="icc-vars" class="var-select" multiple style="display:none"></select><div id="icc-picker"></div></div>
+        <button class="btn btn-primary" onclick="runAnalysis('icc')">Calculate ICC</button>
+    </div>
+    <div id="icc-results" class="results-area"><div id="icc-extras"></div><div id="icc-table"></div>
+        <div class="ai-section"><div class="interp-options"><label class="form-label">📝 รูปแบบ</label><select id="icc-interp-format" class="form-select interp-select"><option value="chapter4" selected>บทที่ 4</option><option value="explain">อธิบายง่าย</option></select></div>
+            <button class="btn btn-ai" onclick="aiAnalyze('icc')">🤖 AI วิเคราะห์ผล</button><div id="icc-ai-result" class="ai-result-box" style="display:none"></div></div>
+        <div class="export-area"><button class="btn btn-export" onclick="exportExcel('icc')">📥 Excel</button><button class="btn btn-export" onclick="exportWord('icc')">📥 Word</button></div>
+    </div>
+</div>
+
+        <!-- ================================================== -->
+        <!-- PAGE: SPLIT-HALF RELIABILITY                        -->
+        <!-- ================================================== -->
+<div class="page" id="page-split-half">
+    <h2 class="page-title">📊 Split-Half Reliability</h2>
+    <details class="stat-guide"><summary>📖 เมื่อไหร่ควรใช้?</summary>
+        <div class="stat-guide-content">
+            <p><strong>วัตถุประสงค์:</strong> ทดสอบความเชื่อมั่นโดยแบ่งข้อคำถามเป็น 2 ส่วน</p>
+        </div></details>
+    <div class="card">
+        <div class="form-group"><label>Select Items (2+)</label>
+            <select id="sh-vars" class="var-select" multiple style="display:none"></select><div id="sh-picker"></div></div>
+        <button class="btn btn-primary" onclick="runAnalysis('split-half')">Calculate</button>
+    </div>
+    <div id="sh-results" class="results-area"><div id="sh-extras"></div><div id="sh-table"></div>
+        <div class="ai-section"><div class="interp-options"><label class="form-label">📝 รูปแบบ</label><select id="sh-interp-format" class="form-select interp-select"><option value="chapter4" selected>บทที่ 4</option><option value="explain">อธิบายง่าย</option></select></div>
+            <button class="btn btn-ai" onclick="aiAnalyze('sh')">🤖 AI วิเคราะห์ผล</button><div id="sh-ai-result" class="ai-result-box" style="display:none"></div></div>
+        <div class="export-area"><button class="btn btn-export" onclick="exportExcel('sh')">📥 Excel</button></div>
+    </div>
+</div>
+
+        <!-- ================================================== -->
+        <!-- PAGE: McNEMAR TEST                                  -->
+        <!-- ================================================== -->
+<div class="page" id="page-mcnemar">
+    <h2 class="page-title">📐 McNemar Test</h2>
+    <details class="stat-guide"><summary>📖 เมื่อไหร่ควรใช้?</summary>
+        <div class="stat-guide-content">
+            <p><strong>วัตถุประสงค์:</strong> ทดสอบการเปลี่ยนแปลงของตัวแปร Binary ก่อน-หลัง</p>
+            <p><strong>ตัวอย่าง:</strong> สอบผ่าน/ไม่ผ่าน ก่อน-หลังอบรม</p>
+        </div></details>
+    <div class="card">
+        <div class="form-group"><label>Before (0/1)</label><select id="mcn-before" class="var-select" style="display:none"></select><div id="mcn-before-picker"></div></div>
+        <div class="form-group"><label>After (0/1)</label><select id="mcn-after" class="var-select" style="display:none"></select><div id="mcn-after-picker"></div></div>
+        <button class="btn btn-primary" onclick="runAnalysis('mcnemar')">Run McNemar Test</button>
+    </div>
+    <div id="mcn-results" class="results-area"><div id="mcn-extras"></div><div id="mcn-table"></div>
+        <div class="ai-section"><div class="interp-options"><label class="form-label">📝 รูปแบบ</label><select id="mcn-interp-format" class="form-select interp-select"><option value="chapter4" selected>บทที่ 4</option><option value="explain">อธิบายง่าย</option></select></div>
+            <button class="btn btn-ai" onclick="aiAnalyze('mcn')">🤖 AI วิเคราะห์ผล</button><div id="mcn-ai-result" class="ai-result-box" style="display:none"></div></div>
+        <div class="export-area"><button class="btn btn-export" onclick="exportExcel('mcn')">📥 Excel</button></div>
+    </div>
+</div>
+
+        <!-- ================================================== -->
+        <!-- PAGE: FISHER'S EXACT TEST                           -->
+        <!-- ================================================== -->
+<div class="page" id="page-fisher-exact">
+    <h2 class="page-title">📐 Fisher's Exact Test</h2>
+    <details class="stat-guide"><summary>📖 เมื่อไหร่ควรใช้?</summary>
+        <div class="stat-guide-content">
+            <p><strong>วัตถุประสงค์:</strong> ทดสอบความสัมพันธ์ตัวแปร 2x2 เมื่อ Expected < 5</p>
+            <p><strong>หมายเหตุ:</strong> ใช้แทน Chi-Square เมื่อ cell มีค่าน้อย</p>
+        </div></details>
+    <div class="card">
+        <div class="form-group"><label>Variable 1</label><select id="fe-var1" class="var-select" style="display:none"></select><div id="fe-var1-picker"></div></div>
+        <div class="form-group"><label>Variable 2</label><select id="fe-var2" class="var-select" style="display:none"></select><div id="fe-var2-picker"></div></div>
+        <button class="btn btn-primary" onclick="runAnalysis('fisher-exact')">Run Fisher's Exact</button>
+    </div>
+    <div id="fe-results" class="results-area"><div id="fe-extras"></div><div id="fe-table"></div>
+        <div class="ai-section"><div class="interp-options"><label class="form-label">📝 รูปแบบ</label><select id="fe-interp-format" class="form-select interp-select"><option value="chapter4" selected>บทที่ 4</option><option value="explain">อธิบายง่าย</option></select></div>
+            <button class="btn btn-ai" onclick="aiAnalyze('fe')">🤖 AI วิเคราะห์ผล</button><div id="fe-ai-result" class="ai-result-box" style="display:none"></div></div>
+        <div class="export-area"><button class="btn btn-export" onclick="exportExcel('fe')">📥 Excel</button></div>
+    </div>
+</div>
+
+        <!-- ================================================== -->
+        <!-- PAGE: COCHRAN'S Q TEST                              -->
+        <!-- ================================================== -->
+<div class="page" id="page-cochran-q">
+    <h2 class="page-title">📐 Cochran's Q Test</h2>
+    <details class="stat-guide"><summary>📖 เมื่อไหร่ควรใช้?</summary>
+        <div class="stat-guide-content">
+            <p><strong>วัตถุประสงค์:</strong> เปรียบเทียบสัดส่วน (Binary 0/1) จาก 3+ เงื่อนไข ในกลุ่มเดียวกัน</p>
+            <p><strong>ตัวอย่าง:</strong> ผ่าน/ไม่ผ่าน 3 รอบการทดสอบ</p>
+        </div></details>
+    <div class="card">
+        <div class="form-group"><label>Select Variables (3+ conditions, 0/1 data)</label>
+            <select id="cq-vars" class="var-select" multiple style="display:none"></select><div id="cq-picker"></div></div>
+        <button class="btn btn-primary" onclick="runAnalysis('cochran-q')">Run Cochran's Q</button>
+    </div>
+    <div id="cq-results" class="results-area"><div id="cq-extras"></div><div id="cq-table"></div>
+        <div class="ai-section"><div class="interp-options"><label class="form-label">📝 รูปแบบ</label><select id="cq-interp-format" class="form-select interp-select"><option value="chapter4" selected>บทที่ 4</option><option value="explain">อธิบายง่าย</option></select></div>
+            <button class="btn btn-ai" onclick="aiAnalyze('cq')">🤖 AI วิเคราะห์ผล</button><div id="cq-ai-result" class="ai-result-box" style="display:none"></div></div>
+        <div class="export-area"><button class="btn btn-export" onclick="exportExcel('cq')">📥 Excel</button></div>
     </div>
 </div>
 
