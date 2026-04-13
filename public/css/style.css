@@ -862,13 +862,64 @@ select[multiple], .var-select[multiple] { min-height: 110px; }
 /* ----- Loading in chat ----- */
 .chat-loading { text-align: center; padding: 12px; color: #64748b; }
 
+/* ----- Menu Toggle Button (hidden on desktop) ----- */
+.menu-toggle {
+  display: none;
+  position: fixed; top: 12px; left: 12px; z-index: 1500;
+  background: #1e293b; color: #fff; border: none;
+  width: 44px; height: 44px; border-radius: 12px;
+  font-size: 1.4rem; cursor: pointer;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+  align-items: center; justify-content: center;
+}
+.menu-toggle:hover { background: #334155; }
+
+/* ----- Sidebar Overlay (hidden on desktop) ----- */
+.sidebar-overlay {
+  display: none;
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.4); z-index: 1800;
+}
+.sidebar-overlay.active { display: block; }
+
 @media (max-width: 768px) {
-  #sidebar { width: 230px; }
+  /* Show hamburger button */
+  .menu-toggle { display: flex; }
+
+  /* Sidebar: slide-in overlay */
+  #sidebar {
+    position: fixed; top: 0; left: -280px; height: 100vh;
+    width: 270px; z-index: 1900;
+    transition: left 0.3s ease;
+    box-shadow: none;
+  }
+  #sidebar.open {
+    left: 0;
+    box-shadow: 4px 0 20px rgba(0,0,0,0.2);
+  }
+
+  /* Main content: full width */
+  #main-content {
+    padding: 60px 16px 16px;
+    width: 100%;
+  }
+
+  /* Cards & grids */
   .summary-cards, .metrics-row { grid-template-columns: repeat(2,1fr); }
-  .template-grid { grid-template-columns: repeat(2,1fr); }
+  .template-grid { grid-template-columns: 1fr; }
   .feature-cards-grid { grid-template-columns: repeat(2,1fr); }
   .feature-preview-cards { grid-template-columns: repeat(3,1fr); }
   .form-row { flex-wrap: wrap; }
-  #main-content { padding: 16px; }
-  .login-card { padding: 32px 24px; }
+
+  /* Login card */
+  .login-card { padding: 28px 20px; max-width: 95%; }
+  .login-title { font-size: 1.3rem; }
+  .feature-preview-cards { grid-template-columns: repeat(3,1fr); gap: 6px; }
+
+  /* Result table scroll */
+  .result-table { font-size: 0.75rem; }
+  .result-table th, .result-table td { padding: 6px 8px; }
+
+  /* Modal on mobile */
+  .modal-content { width: 95%; max-height: 90vh; }
 }

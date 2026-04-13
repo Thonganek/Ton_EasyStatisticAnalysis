@@ -166,6 +166,12 @@
 
         state.currentPage = pageName;
 
+        // Close sidebar on mobile after navigation
+        var sidebar = document.getElementById('sidebar');
+        var overlay = document.getElementById('sidebar-overlay');
+        if (sidebar) sidebar.classList.remove('open');
+        if (overlay) overlay.classList.remove('active');
+
         var menuItems = document.querySelectorAll('.menu-item');
         menuItems.forEach(function (item) { item.classList.remove('active'); });
         menuItems.forEach(function (item) {
@@ -228,6 +234,20 @@
     // =========================================================================
     // Menu Group Toggle
     // =========================================================================
+
+    function toggleSidebar() {
+        var sidebar = document.getElementById('sidebar');
+        var overlay = document.getElementById('sidebar-overlay');
+        if (!sidebar) return;
+        var isOpen = sidebar.classList.contains('open');
+        if (isOpen) {
+            sidebar.classList.remove('open');
+            if (overlay) overlay.classList.remove('active');
+        } else {
+            sidebar.classList.add('open');
+            if (overlay) overlay.classList.add('active');
+        }
+    }
 
     function toggleMenuGroup(header) {
         var group = header.parentElement;
@@ -3019,6 +3039,7 @@
     window.handleLogin = handleLogin;
     window.handleLogout = handleLogout;
     window.navigateTo = navigateTo;
+    window.toggleSidebar = toggleSidebar;
     window.toggleMenuGroup = toggleMenuGroup;
     window.runAnalysis = runAnalysis;
     window.aiAnalyze = aiAnalyze;
