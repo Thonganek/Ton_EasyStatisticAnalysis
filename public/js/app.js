@@ -42,7 +42,7 @@
         var password = document.getElementById('password').value.trim();
         if (username === 'thankyou' && password === '1234') {
             document.getElementById('login-page').style.display = 'none';
-            document.getElementById('app-container').style.display = '';
+            document.getElementById('app-container').style.display = 'flex';
             navigateTo('home');
         } else {
             alert('Invalid username or password. Please try again.');
@@ -59,7 +59,7 @@
         state.aiResults = {};
         state.chatHistory = [];
         document.getElementById('app-container').style.display = 'none';
-        document.getElementById('login-page').style.display = '';
+        document.getElementById('login-page').style.display = 'flex';
         document.getElementById('username').value = '';
         document.getElementById('password').value = '';
         var uploadStatus = document.getElementById('upload-status');
