@@ -2794,6 +2794,35 @@
             }
         }
 
+        // 9. Regression Equation
+        var eqParts = [dv + ' = ' + fmt(result.coefficients[0].b)];
+        result.coefficients.forEach(function(c, idx) {
+            if (idx === 0) return;
+            var sign = c.b >= 0 ? ' + ' : ' - ';
+            eqParts.push(sign + fmt(Math.abs(c.b)) + '(' + c.variable + ')');
+        });
+        var unstdEq = eqParts.join('');
+        var stdParts = [dv + '(Z) ='];
+        var hasBeta = false;
+        result.coefficients.forEach(function(c, idx) {
+            if (idx === 0) return;
+            var betaVal = c.beta !== undefined ? c.beta : 0;
+            hasBeta = true;
+            var sign = betaVal >= 0 ? (idx === 1 ? ' ' : ' + ') : ' - ';
+            stdParts.push(sign + fmt(Math.abs(betaVal)) + '(Z_' + c.variable + ')');
+        });
+        var stdEq = hasBeta ? stdParts.join('') : '';
+
+        var eqData = [{'สมการ Unstandardized (ค่าดิบ)': unstdEq}];
+        if (stdEq) eqData[0]['สมการ Standardized (ค่ามาตรฐาน)'] = stdEq;
+        extras.push({ title: 'สมการถดถอย (Regression Equation)', data: eqData });
+
+        // 10. Diagnostic Warnings
+        var warnings = _buildRegressionWarnings(result, selectedIVs, selectedXData, yData, lrOpts, mainRows);
+        if (warnings.length > 0) {
+            extras.push({ title: '⚠️ จุดสังเกต / ข้อควรระวัง (Diagnostics)', data: warnings });
+        }
+
         state.results['lr'] = { data: mainRows, title: 'Regression Coefficients (Method: ' + methodLabel + ')', extras: extras };
         displayResults('lr');
     }
@@ -2917,6 +2946,99 @@
             selectedXData: selectedIdx.map(function(i){return allXData[i];}),
             steps: steps
         };
+    }
+
+    // --- Regression diagnostic warnings builder (Linear Regression) ---
+    function _buildRegressionWarnings(result, selectedIVs, selectedXData, yData, lrOpts, mainRows) {
+        var warnings = [];
+        var n = yData.length;
+        var p = selectedIVs.length;
+
+        // 1. R² interpretation
+        if (result.rSquared < 0.1) warnings.push({'ประเด็น': 'R² ต่ำมาก', 'รายละเอียด': 'R² = ' + fmt(result.rSquared) + ' — ตัวแปรอิสระอธิบายตัวแปรตามได้ < 10%', 'ระดับ': '🟡 ระวัง', 'คำแนะนำ': 'โมเดลอธิบายได้น้อย ควรพิจารณาเพิ่มตัวแปร หรือตรวจสอบความสัมพันธ์เชิงเส้น'});
+        if (result.adjRSquared < 0) warnings.push({'ประเด็น': 'Adjusted R² ติดลบ', 'รายละเอียด': 'Adj R² = ' + fmt(result.adjRSquared), 'ระดับ': '🔴 สำคัญ', 'คำแนะนำ': 'โมเดลแย่กว่าค่าเฉลี่ย — ตัวแปรที่ใส่อาจไม่เหมาะสม หรือ overfitting'});
+
+        // 2. Model significance
+        if (result.fP >= 0.05) warnings.push({'ประเด็น': 'โมเดลไม่มีนัยสำคัญ', 'รายละเอียด': 'F-test p = ' + Stats.formatPValue(result.fP), 'ระดับ': '🔴 สำคัญ', 'คำแนะนำ': 'ตัวแปรอิสระไม่สามารถพยากรณ์ตัวแปรตามได้ ผลทั้งหมดไม่น่าเชื่อถือ'});
+
+        // 3. Durbin-Watson
+        if (result.durbinWatson !== undefined) {
+            if (result.durbinWatson < 1.5) warnings.push({'ประเด็น': 'Positive Autocorrelation (DW ต่ำ)', 'รายละเอียด': 'Durbin-Watson = ' + fmt(result.durbinWatson) + ' (ค่าปกติ 1.5-2.5)', 'ระดับ': '🟡 ระวัง', 'คำแนะนำ': 'Residuals อาจมีความสัมพันธ์กัน ผิด Assumption ของ OLS'});
+            if (result.durbinWatson > 2.5) warnings.push({'ประเด็น': 'Negative Autocorrelation (DW สูง)', 'รายละเอียด': 'Durbin-Watson = ' + fmt(result.durbinWatson) + ' (ค่าปกติ 1.5-2.5)', 'ระดับ': '🟡 ระวัง', 'คำแนะนำ': 'Residuals อาจมีความสัมพันธ์เชิงลบ'});
+        }
+
+        // 4. Multicollinearity (VIF)
+        if (selectedIVs.length > 1) {
+            selectedIVs.forEach(function(ivName, idx) {
+                var xi = selectedXData[idx];
+                var otherX = selectedXData.filter(function(_,j){return j!==idx;});
+                var otherNames = ['(Intercept)'].concat(selectedIVs.filter(function(_,j){return j!==idx;}));
+                var regI = Stats.linearRegression(xi, otherX, otherNames);
+                var r2i = regI ? regI.rSquared : 0;
+                var vif = (1-r2i) > 0 ? 1/(1-r2i) : 999;
+                if (vif > 10) warnings.push({'ประเด็น': 'Multicollinearity สูงมาก: ' + ivName, 'รายละเอียด': 'VIF = ' + fmt(vif) + ' (เกณฑ์ < 10)', 'ระดับ': '🔴 สำคัญ', 'คำแนะนำ': 'ตัวแปรนี้ซ้ำซ้อนกับตัวอื่นมาก ควรตัดออก หรือรวมเป็นองค์ประกอบ'});
+                else if (vif > 5) warnings.push({'ประเด็น': 'Multicollinearity ปานกลาง: ' + ivName, 'รายละเอียด': 'VIF = ' + fmt(vif) + ' (เกณฑ์ < 5 ดี)', 'ระดับ': '🟡 ระวัง', 'คำแนะนำ': 'S.E. อาจพองตัว ค่า t อาจไม่แม่นยำ'});
+            });
+        }
+
+        // 5. Sample size adequacy
+        var nPerIV = n / p;
+        if (nPerIV < 10) warnings.push({'ประเด็น': 'ขนาดตัวอย่างน้อยเกินไป', 'รายละเอียด': 'N/IV = ' + fmt(nPerIV,1) + ' (แนะนำ >= 15-20)', 'ระดับ': '🔴 สำคัญ', 'คำแนะนำ': 'Tabachnick & Fidell แนะนำ N >= 50 + 8*IV (' + (50+8*p) + ' คน) สำหรับ R² และ N >= 104 + IV (' + (104+p) + ' คน) สำหรับ coefficients'});
+        else if (nPerIV < 20) warnings.push({'ประเด็น': 'ขนาดตัวอย่างพอใช้', 'รายละเอียด': 'N/IV = ' + fmt(nPerIV,1), 'ระดับ': '🟡 ระวัง', 'คำแนะนำ': 'แนะนำ N >= ' + (50+8*p) + ' (Tabachnick & Fidell) ปัจจุบัน N = ' + n});
+
+        // 6. Non-significant predictors
+        var nonSigCount = 0;
+        mainRows.forEach(function(r, idx) {
+            if (idx === 0) return; // skip intercept
+            var pVal = parseFloat(r['p-value'] || r['Sig.']);
+            if (!isNaN(pVal) && pVal >= 0.05) nonSigCount++;
+        });
+        if (nonSigCount > 0 && nonSigCount === selectedIVs.length) warnings.push({'ประเด็น': 'ไม่มีตัวแปรอิสระใดมีนัยสำคัญ', 'รายละเอียด': 'ตัวแปรอิสระทุกตัว p >= 0.05', 'ระดับ': '🔴 สำคัญ', 'คำแนะนำ': 'ไม่มีตัวแปรใดพยากรณ์ได้ ตรวจสอบ Multicollinearity หรือความเหมาะสมของตัวแปร'});
+        else if (nonSigCount > 0) warnings.push({'ประเด็น': 'มีตัวแปรไม่มีนัยสำคัญ ' + nonSigCount + ' ตัว', 'รายละเอียด': 'จาก ' + selectedIVs.length + ' ตัว', 'ระดับ': '🟡 ระวัง', 'คำแนะนำ': 'พิจารณาใช้ Stepwise/Forward เพื่อคัดเลือกเฉพาะตัวที่มีนัยสำคัญ'});
+
+        if (warnings.length === 0) warnings.push({'ประเด็น': 'ไม่พบปัญหาเบื้องต้น', 'รายละเอียด': '—', 'ระดับ': '✅ ปกติ', 'คำแนะนำ': 'ตรวจสอบ Normality ของ Residual, Linearity, Homoscedasticity เพิ่มเติม'});
+        return warnings;
+    }
+
+    // --- Regression diagnostic warnings builder (Multiple Regression) ---
+    function _buildRegressionWarnings2(R2, adjR2, pF, dw, n, p, coeffRows, selectedIVs, selectedXData, Y) {
+        var warnings = [];
+
+        if (R2 < 0.1) warnings.push({'ประเด็น': 'R² ต่ำมาก', 'รายละเอียด': 'R² = ' + fmt(R2), 'ระดับ': '🟡 ระวัง', 'คำแนะนำ': 'ตัวแปรอิสระอธิบายตัวแปรตามได้น้อยมาก'});
+        if (adjR2 < 0) warnings.push({'ประเด็น': 'Adjusted R² ติดลบ', 'รายละเอียด': fmt(adjR2), 'ระดับ': '🔴 สำคัญ', 'คำแนะนำ': 'โมเดลไม่เหมาะสม'});
+        if (pF >= 0.05) warnings.push({'ประเด็น': 'โมเดลไม่มีนัยสำคัญ', 'รายละเอียด': 'F-test p = ' + fmt(pF), 'ระดับ': '🔴 สำคัญ', 'คำแนะนำ': 'ตัวแปรอิสระไม่สามารถพยากรณ์ตัวแปรตามได้'});
+
+        // Durbin-Watson
+        if (dw < 1.5) warnings.push({'ประเด็น': 'Positive Autocorrelation', 'รายละเอียด': 'DW = ' + fmt(dw) + ' (ปกติ 1.5-2.5)', 'ระดับ': '🟡 ระวัง', 'คำแนะนำ': 'Residual อาจมีความสัมพันธ์กัน'});
+        if (dw > 2.5) warnings.push({'ประเด็น': 'Negative Autocorrelation', 'รายละเอียด': 'DW = ' + fmt(dw), 'ระดับ': '🟡 ระวัง', 'คำแนะนำ': 'Residual อาจมีความสัมพันธ์เชิงลบ'});
+
+        // VIF
+        if (selectedIVs.length > 1) {
+            selectedIVs.forEach(function(ivN, idx) {
+                var xi = selectedXData[idx];
+                var otherX = selectedXData.filter(function(_,j){return j!==idx;});
+                var otherNms = ['(Intercept)'].concat(selectedIVs.filter(function(_,j){return j!==idx;}));
+                var regI = Stats.linearRegression(xi, otherX, otherNms);
+                var r2i = regI ? regI.rSquared : 0;
+                var vif = (1-r2i)>0?1/(1-r2i):999;
+                if (vif>10) warnings.push({'ประเด็น':'Multicollinearity สูงมาก: '+ivN,'รายละเอียด':'VIF = '+fmt(vif),'ระดับ':'🔴 สำคัญ','คำแนะนำ':'ควรตัดตัวแปรนี้ออก'});
+                else if (vif>5) warnings.push({'ประเด็น':'Multicollinearity ปานกลาง: '+ivN,'รายละเอียด':'VIF = '+fmt(vif),'ระดับ':'🟡 ระวัง','คำแนะนำ':'S.E. อาจพองตัว'});
+            });
+        }
+
+        // Sample size
+        var nPerIV = n/p;
+        if (nPerIV < 10) warnings.push({'ประเด็น':'ขนาดตัวอย่างน้อย','รายละเอียด':'N/IV = '+fmt(nPerIV,1),'ระดับ':'🔴 สำคัญ','คำแนะนำ':'แนะนำ N >= '+(50+8*p)+' (Tabachnick & Fidell)'});
+        else if (nPerIV < 20) warnings.push({'ประเด็น':'ขนาดตัวอย่างพอใช้','รายละเอียด':'N/IV = '+fmt(nPerIV,1),'ระดับ':'🟡 ระวัง','คำแนะนำ':'N = '+n+', แนะนำ >= '+(50+8*p)});
+
+        // Non-significant predictors
+        var nonSig = 0;
+        coeffRows.forEach(function(r,idx){if(idx===0)return;var pVal=parseFloat(r['Sig.']);if(!isNaN(pVal)&&pVal>=0.05)nonSig++;});
+        if (nonSig>0 && nonSig===p) warnings.push({'ประเด็น':'ไม่มี IV ใดมีนัยสำคัญ','รายละเอียด':'ทุกตัว p >= 0.05','ระดับ':'🔴 สำคัญ','คำแนะนำ':'ลองใช้ Stepwise หรือตรวจ Multicollinearity'});
+        else if (nonSig>0) warnings.push({'ประเด็น':'มี IV ไม่มีนัยสำคัญ '+nonSig+' ตัว','รายละเอียด':'จาก '+p+' ตัว','ระดับ':'🟡 ระวัง','คำแนะนำ':'พิจารณาตัดออก หรือใช้ Stepwise'});
+
+        if (warnings.length===0) warnings.push({'ประเด็น':'ไม่พบปัญหาเบื้องต้น','รายละเอียด':'—','ระดับ':'✅ ปกติ','คำแนะนำ':'ตรวจ Normality/Linearity/Homoscedasticity เพิ่ม'});
+        return warnings;
     }
 
     // =========================================================================
@@ -3067,6 +3189,66 @@
             }
             return row;
         });
+
+        // 6. Logistic Regression Equation
+        var logitParts = ['ln(P/(1-P)) = ' + fmt(result.coefficients[0].b)];
+        result.coefficients.forEach(function(c, idx) {
+            if (idx === 0) return;
+            var sign = c.b >= 0 ? ' + ' : ' - ';
+            logitParts.push(sign + fmt(Math.abs(c.b)) + '(' + c.variable + ')');
+        });
+        var logitEq = logitParts.join('');
+        // Probability equation
+        var probParts = ['P(Y=1) = 1 / (1 + e^-(' + fmt(result.coefficients[0].b)];
+        result.coefficients.forEach(function(c, idx) {
+            if (idx === 0) return;
+            var sign = c.b >= 0 ? ' + ' : ' - ';
+            probParts.push(sign + fmt(Math.abs(c.b)) + '*' + c.variable);
+        });
+        var probEq = probParts.join('') + '))';
+        // OR interpretation
+        var orInterpRows = [];
+        result.coefficients.forEach(function(c, idx) {
+            if (idx === 0) return;
+            var orVal = c.or;
+            var direction = orVal > 1 ? 'เพิ่มโอกาส' : (orVal < 1 ? 'ลดโอกาส' : 'ไม่มีผล');
+            var pctChange = orVal > 1 ? fmt((orVal - 1) * 100, 1) + '% เพิ่มขึ้น' : fmt((1 - orVal) * 100, 1) + '% ลดลง';
+            orInterpRows.push({
+                'Variable': c.variable,
+                'Exp(B) / OR': fmt(orVal),
+                'ทิศทาง': direction,
+                'แปลผล': 'เมื่อ ' + c.variable + ' เพิ่มขึ้น 1 หน่วย โอกาสเกิดเหตุการณ์ ' + pctChange,
+                'Sig.': Stats.formatPValue(c.p),
+                'มีนัยสำคัญ': c.p < 0.05 ? 'ใช่' : 'ไม่'
+            });
+        });
+
+        extras.push({ title: 'สมการ Logistic Regression', data: [
+            {'สมการ Logit': logitEq},
+            {'สมการ Probability': probEq}
+        ]});
+        if (orInterpRows.length > 0) {
+            extras.push({ title: 'การแปลผล Odds Ratio (OR) แต่ละตัวแปร', data: orInterpRows });
+        }
+
+        // 7. Diagnostic Warnings for Logistic Regression
+        var logrWarnings = [];
+        var nEvents = yData.filter(function(v){return v>=0.5;}).length;
+        var nNonEvents = n - nEvents;
+        var epp = Math.min(nEvents, nNonEvents) / ivs.length; // events per predictor
+        if (epp < 10) logrWarnings.push({'ประเด็น': 'Events Per Predictor (EPP) ต่ำ', 'รายละเอียด': 'EPP = ' + fmt(epp,1) + ' (แนะนำ >= 10)', 'ระดับ': '🔴 สำคัญ', 'คำแนะนำ': 'ผลอาจไม่เสถียร ควรเพิ่มขนาดตัวอย่าง หรือลดจำนวนตัวแปรอิสระ'});
+        else if (epp < 20) logrWarnings.push({'ประเด็น': 'Events Per Predictor พอใช้', 'รายละเอียด': 'EPP = ' + fmt(epp,1) + ' (เหมาะสม >= 20)', 'ระดับ': '🟡 ระวัง', 'คำแนะนำ': 'ใช้ได้แต่ผลอาจมี bias เล็กน้อย'});
+        if (result.accuracy < 0.6) logrWarnings.push({'ประเด็น': 'Model Accuracy ต่ำ', 'รายละเอียด': 'Accuracy = ' + fmt(result.accuracy*100,1) + '%', 'ระดับ': '🔴 สำคัญ', 'คำแนะนำ': 'โมเดลพยากรณ์ได้ไม่ดี ควรพิจารณาเพิ่มตัวแปร หรือตรวจสอบข้อมูล'});
+        if (nagelkerke < 0.1) logrWarnings.push({'ประเด็น': 'Nagelkerke R² ต่ำมาก', 'รายละเอียด': 'R² = ' + fmt(nagelkerke), 'ระดับ': '🟡 ระวัง', 'คำแนะนำ': 'ตัวแปรอิสระอธิบายตัวแปรตามได้น้อย'});
+        if (pChi >= 0.05) logrWarnings.push({'ประเด็น': 'Omnibus Test ไม่มีนัยสำคัญ', 'รายละเอียด': 'Chi-square p = ' + fmt(pChi), 'ระดับ': '🔴 สำคัญ', 'คำแนะนำ': 'โมเดลโดยรวมไม่ดีกว่า Null Model ผลอาจไม่น่าเชื่อถือ'});
+        // Check for extreme OR
+        result.coefficients.forEach(function(c, idx) {
+            if (idx === 0) return;
+            if (c.or > 50) logrWarnings.push({'ประเด็น': 'OR สูงมาก: ' + c.variable, 'รายละเอียด': 'OR = ' + fmt(c.or), 'ระดับ': '🟡 ระวัง', 'คำแนะนำ': 'อาจเกิดจาก quasi-complete separation หรือ sample size น้อย ตรวจสอบข้อมูล'});
+            if (c.se > 5) logrWarnings.push({'ประเด็น': 'S.E. สูงมาก: ' + c.variable, 'รายละเอียด': 'S.E. = ' + fmt(c.se), 'ระดับ': '🔴 สำคัญ', 'คำแนะนำ': 'อาจเกิด complete separation ค่า B และ OR ไม่น่าเชื่อถือ'});
+        });
+        if (logrWarnings.length === 0) logrWarnings.push({'ประเด็น': 'ไม่พบปัญหาเบื้องต้น', 'รายละเอียด': '—', 'ระดับ': '✅ ปกติ', 'คำแนะนำ': 'ตรวจสอบ Assumption เพิ่มเติมตามบริบทงานวิจัย'});
+        extras.push({ title: '⚠️ จุดสังเกต / ข้อควรระวัง (Diagnostics)', data: logrWarnings });
 
         state.results['logr'] = { data: mainRows, title: 'Variables in the Equation (Method: ' + methodLabel + ')', extras: extras };
         displayResults('logr');
@@ -3722,15 +3904,50 @@
             };
         });
 
-        // 3. Coefficients per step
+        // 3. Coefficients per step + Equations
         steps.forEach(function(s) {
             if (s.coefficients) {
                 var coefRows = s.coefficients.map(function(c){
                     return {Variable:c.variable,B:fmt(c.b),'S.E.':fmt(c.se),'Beta (Std.)':c.beta!==undefined?fmt(c.beta):'',t:fmt(c.t),'Sig.':Stats.formatPValue(c.p),'95% CI':c.ci95||''};
                 });
                 extras.push({title:'Model '+s.step+' — Coefficients (Variables: '+s.varsAdded.join(', ')+')',data:coefRows});
+
+                // Equation for this step
+                var eqParts = [dv + ' = ' + fmt(s.coefficients[0].b)];
+                s.coefficients.forEach(function(c, idx) {
+                    if (idx === 0) return;
+                    var sign = c.b >= 0 ? ' + ' : ' - ';
+                    eqParts.push(sign + fmt(Math.abs(c.b)) + '(' + c.variable + ')');
+                });
+                var stdParts = [dv + '(Z) ='];
+                s.coefficients.forEach(function(c, idx) {
+                    if (idx === 0) return;
+                    var betaVal = c.beta !== undefined ? c.beta : 0;
+                    var sign = betaVal >= 0 ? (idx === 1 ? ' ' : ' + ') : ' - ';
+                    stdParts.push(sign + fmt(Math.abs(betaVal)) + '(Z_' + c.variable + ')');
+                });
+                extras.push({title:'Model '+s.step+' — สมการถดถอย',data:[
+                    {'Unstandardized': eqParts.join('')},
+                    {'Standardized': stdParts.join('')}
+                ]});
             }
         });
+
+        // 4. Diagnostic Warnings
+        var hregWarnings = [];
+        var lastStep = steps[steps.length - 1];
+        if (lastStep) {
+            if (lastStep.rSquared < 0.1) hregWarnings.push({'ประเด็น': 'R² รวมต่ำมาก', 'รายละเอียด': 'R² = ' + fmt(lastStep.rSquared), 'ระดับ': '🟡 ระวัง', 'คำแนะนำ': 'ตัวแปรอิสระทั้งหมดอธิบายตัวแปรตามได้น้อย ควรพิจารณาเพิ่มตัวแปร'});
+            if (lastStep.adjRSquared < 0) hregWarnings.push({'ประเด็น': 'Adjusted R² ติดลบ', 'รายละเอียด': 'Adj R² = ' + fmt(lastStep.adjRSquared), 'ระดับ': '🔴 สำคัญ', 'คำแนะนำ': 'โมเดลแย่กว่าค่าเฉลี่ย ตัวแปรที่ใส่อาจไม่เหมาะสม'});
+        }
+        steps.forEach(function(s, si) {
+            if (si > 0 && s.pChange >= 0.05) hregWarnings.push({'ประเด็น': 'Block ' + s.step + ' ไม่มีนัยสำคัญ', 'รายละเอียด': 'R² Change = ' + fmt(s.r2Change) + ', p = ' + Stats.formatPValue(s.pChange), 'ระดับ': '🟡 ระวัง', 'คำแนะนำ': 'ตัวแปรใน Block นี้ไม่เพิ่มอำนาจพยากรณ์ อาจตัดออกได้'});
+        });
+        var nTotal = y.length;
+        var pTotal = b1Vars.length + b2Vars.length;
+        if (nTotal / pTotal < 15) hregWarnings.push({'ประเด็น': 'อัตราส่วน N/IV ต่ำ', 'รายละเอียด': 'N=' + nTotal + ', IVs=' + pTotal + ' (ratio=' + fmt(nTotal/pTotal,1) + ')', 'ระดับ': '🟡 ระวัง', 'คำแนะนำ': 'แนะนำ N/IV >= 15 สำหรับผลที่เสถียร (Tabachnick & Fidell)'});
+        if (hregWarnings.length === 0) hregWarnings.push({'ประเด็น': 'ไม่พบปัญหาเบื้องต้น', 'รายละเอียด': '—', 'ระดับ': '✅ ปกติ', 'คำแนะนำ': 'ตรวจสอบ Normality ของ Residual และ Linearity เพิ่มเติม'});
+        extras.push({ title: '⚠️ จุดสังเกต / ข้อควรระวัง (Diagnostics)', data: hregWarnings });
 
         state.results['hreg'] = {data:modelRows, title:'Hierarchical Regression — Model Comparison (Method: Hierarchical Enter)', extras:extras};
         displayResults('hreg');
@@ -5223,6 +5440,31 @@
                 });
                 extras.push({title:'Excluded Variables',data:exclRows});
             }
+        }
+
+        // 8. Regression Equation
+        var eqParts2 = [dvName + ' = ' + fmt(betas[0])];
+        selectedIVs.forEach(function(iv, idx) {
+            var sign = betas[idx+1] >= 0 ? ' + ' : ' - ';
+            eqParts2.push(sign + fmt(Math.abs(betas[idx+1])) + '(' + iv + ')');
+        });
+        var unstdEq2 = eqParts2.join('');
+        var stdParts2 = [dvName + '(Z) ='];
+        coeffRows.forEach(function(c, idx) {
+            if (idx === 0) return;
+            var betaVal = parseFloat(c['Beta (Std.)']) || 0;
+            var sign = betaVal >= 0 ? (idx === 1 ? ' ' : ' + ') : ' - ';
+            stdParts2.push(sign + fmt(Math.abs(betaVal)) + '(Z_' + c.Variable + ')');
+        });
+        extras.push({title:'สมการถดถอย (Regression Equation)',data:[
+            {'สมการ Unstandardized (ค่าดิบ)': unstdEq2},
+            {'สมการ Standardized (ค่ามาตรฐาน)': stdParts2.join('')}
+        ]});
+
+        // 9. Diagnostic Warnings
+        var mregWarnings = _buildRegressionWarnings2(R2, adjR2, pF, dw, n, p, coeffRows, selectedIVs, selectedXData, Y);
+        if (mregWarnings.length > 0) {
+            extras.push({ title: '⚠️ จุดสังเกต / ข้อควรระวัง (Diagnostics)', data: mregWarnings });
         }
 
         state.results['mreg'] = {data:coeffRows, title:'Multiple Regression Coefficients (Method: '+methodLabel+')', extras:extras};
