@@ -2605,48 +2605,318 @@
         if (ivs.length === 0) ivs = getSelected('lr-ivs');
         if (!dv || ivs.length === 0) { alert('Please select DV and at least one IV.'); return; }
 
+        var method = getSelectValue('lr-method') || 'enter';
+        var pIn = parseFloat(document.getElementById('lr-pin') ? document.getElementById('lr-pin').value : 0.05) || 0.05;
+        var pOut = parseFloat(document.getElementById('lr-pout') ? document.getElementById('lr-pout').value : 0.10) || 0.10;
+
+        // Get display options
+        var lrOpts = {};
+        document.querySelectorAll('input[name="lr-opt"]').forEach(function(cb) { lrOpts[cb.value] = cb.checked; });
+
         var yData = getColumnData(dv, true);
         var xData = ivs.map(function (iv) { return getColumnData(iv, true); });
         var minLen = Math.min(yData.length, Math.min.apply(null, xData.map(function (x) { return x.length; })));
         yData = yData.slice(0, minLen);
         xData = xData.map(function (x) { return x.slice(0, minLen); });
 
-        var names = ['(Intercept)'].concat(ivs);
+        // --- Stepwise / Forward / Backward variable selection ---
+        var selectedIVs = ivs.slice();
+        var selectedXData = xData.slice();
+        var stepLog = [];
+        var methodLabel = 'Enter';
+
+        if (method === 'stepwise' || method === 'forward' || method === 'backward') {
+            methodLabel = method.charAt(0).toUpperCase() + method.slice(1);
+            var result_steps = _stepwiseRegression(yData, xData, ivs, method, pIn, pOut);
+            selectedIVs = result_steps.selectedVars;
+            selectedXData = result_steps.selectedXData;
+            stepLog = result_steps.steps;
+            if (selectedIVs.length === 0) {
+                alert('ไม่มีตัวแปรใดผ่านเกณฑ์ p-in = ' + pIn + ' ลองปรับเกณฑ์หรือเปลี่ยน Method');
+                return;
+            }
+        }
+
+        var names = ['(Intercept)'].concat(selectedIVs);
 
         // Run assumption check
-        runAssumptionCheck('lr', 'correlation', { vars: xData });
+        runAssumptionCheck('lr', 'correlation', { vars: selectedXData });
 
-        var result = Stats.linearRegression(yData, xData, names);
+        var result = Stats.linearRegression(yData, selectedXData, names);
         if (!result) { alert('Could not compute regression. Check your data (possible multicollinearity).'); return; }
 
-        var extras = [{
-            title: 'Model Summary',
-            data: [{
-                R: fmt(result.r), 'R-Squared': fmt(result.rSquared),
-                'Adj. R-Squared': fmt(result.adjRSquared),
-                'Durbin-Watson': fmt(result.durbinWatson),
-                F: fmt(result.f), 'p-value': Stats.formatPValue(result.fP)
-            }]
-        }, {
-            title: 'ANOVA',
-            data: [
-                { Source: 'Regression', SS: fmt(result.anova.ssReg), df: result.anova.dfReg, MS: fmt(result.anova.msReg), F: fmt(result.f), 'p-value': Stats.formatPValue(result.fP) },
-                { Source: 'Residual', SS: fmt(result.anova.ssRes), df: result.anova.dfRes, MS: fmt(result.anova.msRes), F: '', 'p-value': '' },
-                { Source: 'Total', SS: fmt(result.anova.ssTotal), df: result.anova.dfReg + result.anova.dfRes, MS: '', F: '', 'p-value': '' }
-            ]
-        }];
+        // --- Build extras ---
+        var extras = [];
 
-        var mainRows = result.coefficients.map(function (c) {
-            return {
-                Variable: c.variable,
-                B: fmt(c.b), 'S.E.': fmt(c.se), t: fmt(c.t),
-                'p-value': Stats.formatPValue(c.p),
-                '95% CI': Stats.formatCI ? Stats.formatCI(c.ci95Lo, c.ci95Hi) : '[' + fmt(c.ci95Lo) + ', ' + fmt(c.ci95Hi) + ']'
-            };
+        // 1. Method Information
+        var methodDesc = {
+            'enter': 'Enter — ใส่ตัวแปรอิสระทั้งหมดเข้าสมการพร้อมกัน ไม่มีการคัดเลือก',
+            'stepwise': 'Stepwise — เพิ่ม/ลดตัวแปรอัตโนมัติตามเกณฑ์ p-in=' + pIn + ', p-out=' + pOut,
+            'forward': 'Forward Selection — เพิ่มตัวแปรทีละตัวตามเกณฑ์ p-in=' + pIn,
+            'backward': 'Backward Elimination — เริ่มจากทุกตัว แล้วตัดตัวที่ไม่มีนัยสำคัญ p-out=' + pOut
+        };
+        extras.push({
+            title: 'Method / กระบวนการสร้างโมเดล',
+            data: [{
+                'Method': methodLabel,
+                'Description': methodDesc[method] || method,
+                'DV': dv,
+                'Candidate IVs': ivs.join(', '),
+                'Selected IVs': selectedIVs.join(', '),
+                'Variables Entered': selectedIVs.length,
+                'Variables Excluded': ivs.length - selectedIVs.length,
+                'p-in Criteria': pIn,
+                'p-out Criteria': pOut,
+                'N': yData.length
+            }]
         });
 
-        state.results['lr'] = { data: mainRows, title: 'Regression Coefficients', extras: extras };
+        // 2. Step-by-step log (for Stepwise/Forward/Backward)
+        if (stepLog.length > 0) {
+            extras.push({ title: 'Variable Selection Steps / ขั้นตอนการคัดเลือกตัวแปร', data: stepLog });
+        }
+
+        // 3. Model Summary
+        var modelSummary = {
+            'Model': '1', 'Method': methodLabel,
+            'R': fmt(result.r), 'R²': fmt(result.rSquared),
+            'Adjusted R²': fmt(result.adjRSquared),
+            'Std. Error of Estimate': fmt(Math.sqrt(result.anova.msRes)),
+            'F': fmt(result.f), 'Sig.': Stats.formatPValue(result.fP)
+        };
+        if (lrOpts.durbin && result.durbinWatson !== undefined) {
+            modelSummary['Durbin-Watson'] = fmt(result.durbinWatson);
+        }
+        extras.push({ title: 'Model Summary', data: [modelSummary] });
+
+        // 4. ANOVA Table
+        extras.push({
+            title: 'ANOVA',
+            data: [
+                { Source: 'Regression', SS: fmt(result.anova.ssReg), df: result.anova.dfReg, MS: fmt(result.anova.msReg), F: fmt(result.f), 'Sig.': Stats.formatPValue(result.fP) },
+                { Source: 'Residual', SS: fmt(result.anova.ssRes), df: result.anova.dfRes, MS: fmt(result.anova.msRes), F: '', 'Sig.': '' },
+                { Source: 'Total', SS: fmt(result.anova.ssTotal), df: result.anova.dfReg + result.anova.dfRes, MS: '', F: '', 'Sig.': '' }
+            ]
+        });
+
+        // 5. Collinearity Diagnostics
+        if (lrOpts.collinearity && selectedIVs.length > 1) {
+            var collinRows = [];
+            selectedIVs.forEach(function(ivName, idx) {
+                var xi = selectedXData[idx];
+                // Regress xi on all other IVs to get R²_i for VIF
+                var otherX = selectedXData.filter(function(_,j){return j!==idx;});
+                var otherNames = ['(Intercept)'].concat(selectedIVs.filter(function(_,j){return j!==idx;}));
+                var regI = Stats.linearRegression(xi, otherX, otherNames);
+                var r2i = regI ? regI.rSquared : 0;
+                var tol = 1 - r2i;
+                var vif = tol > 0 ? 1 / tol : 999;
+                collinRows.push({ 'Variable': ivName, 'Tolerance': fmt(tol), 'VIF': fmt(vif), 'Status': vif > 10 ? 'Multicollinearity!' : (vif > 5 ? 'Warning' : 'OK') });
+            });
+            extras.push({ title: 'Collinearity Diagnostics / ค่าสหสัมพันธ์ร่วมเชิงเส้น', data: collinRows });
+        }
+
+        // 6. Correlation Matrix
+        if (lrOpts.correlation) {
+            var allVars = [dv].concat(selectedIVs);
+            var allData = [yData].concat(selectedXData);
+            var corrRows = [];
+            allVars.forEach(function(v1, i) {
+                var row = { 'Variable': v1 };
+                allVars.forEach(function(v2, j) {
+                    row[v2] = fmt(jStat.corrcoeff(allData[i], allData[j]));
+                });
+                corrRows.push(row);
+            });
+            extras.push({ title: 'Correlation Matrix (Pearson)', data: corrRows });
+        }
+
+        // --- Main: Coefficients Table ---
+        var mainRows = result.coefficients.map(function (c, idx) {
+            var row = {
+                Variable: c.variable,
+                B: fmt(c.b), 'S.E.': fmt(c.se),
+                'Beta (Std.)': idx === 0 ? '—' : fmt(c.beta !== undefined ? c.beta : ''),
+                t: fmt(c.t),
+                'Sig.': Stats.formatPValue(c.p),
+                '95% CI': Stats.formatCI ? Stats.formatCI(c.ci95Lo, c.ci95Hi) : '[' + fmt(c.ci95Lo) + ', ' + fmt(c.ci95Hi) + ']'
+            };
+            // Add collinearity to coefficient table
+            if (lrOpts.collinearity && idx > 0 && selectedIVs.length > 1) {
+                var xi = selectedXData[idx-1];
+                var otherX = selectedXData.filter(function(_,j){return j!==idx-1;});
+                var otherNames = ['(Intercept)'].concat(selectedIVs.filter(function(_,j){return j!==idx-1;}));
+                var regI = Stats.linearRegression(xi, otherX, otherNames);
+                var r2i = regI ? regI.rSquared : 0;
+                row['Tolerance'] = fmt(1 - r2i);
+                row['VIF'] = fmt((1-r2i) > 0 ? 1/(1-r2i) : 999);
+            }
+            return row;
+        });
+
+        // 7. Residual Statistics
+        if (lrOpts.residuals) {
+            var residuals = yData.map(function(y, i) {
+                var pred = result.coefficients[0].b;
+                selectedXData.forEach(function(xd, j) { pred += result.coefficients[j+1].b * xd[i]; });
+                return y - pred;
+            });
+            var predicted = yData.map(function(y, i) {
+                var pred = result.coefficients[0].b;
+                selectedXData.forEach(function(xd, j) { pred += result.coefficients[j+1].b * xd[i]; });
+                return pred;
+            });
+            var sdRes = jStat.stdev(residuals, true);
+            var stdResiduals = residuals.map(function(r) { return r / sdRes; });
+            extras.push({
+                title: 'Residual Statistics',
+                data: [{
+                    'Statistic': 'Predicted Value', 'Min': fmt(jStat.min(predicted)), 'Max': fmt(jStat.max(predicted)), 'Mean': fmt(jStat.mean(predicted)), 'S.D.': fmt(jStat.stdev(predicted, true))
+                }, {
+                    'Statistic': 'Residual', 'Min': fmt(jStat.min(residuals)), 'Max': fmt(jStat.max(residuals)), 'Mean': fmt(jStat.mean(residuals)), 'S.D.': fmt(sdRes)
+                }, {
+                    'Statistic': 'Std. Residual', 'Min': fmt(jStat.min(stdResiduals)), 'Max': fmt(jStat.max(stdResiduals)), 'Mean': fmt(jStat.mean(stdResiduals)), 'S.D.': fmt(jStat.stdev(stdResiduals, true))
+                }]
+            });
+        }
+
+        // 8. Excluded Variables (for Stepwise/Forward)
+        if (method !== 'enter') {
+            var excludedVars = ivs.filter(function(v) { return selectedIVs.indexOf(v) === -1; });
+            if (excludedVars.length > 0) {
+                var exclRows = excludedVars.map(function(v) {
+                    var idx = ivs.indexOf(v);
+                    var xi = xData[idx];
+                    var r = jStat.corrcoeff(xi, yData);
+                    return { 'Variable': v, 'Partial Corr. (r)': fmt(r), 'Status': 'Excluded (p > ' + pIn + ')' };
+                });
+                extras.push({ title: 'Excluded Variables / ตัวแปรที่ไม่ผ่านเกณฑ์', data: exclRows });
+            }
+        }
+
+        state.results['lr'] = { data: mainRows, title: 'Regression Coefficients (Method: ' + methodLabel + ')', extras: extras };
         displayResults('lr');
+    }
+
+    // --- Stepwise / Forward / Backward selection helper ---
+    function _stepwiseRegression(yData, allXData, allIVNames, method, pIn, pOut) {
+        var n = yData.length;
+        var steps = [];
+        var selected = [];
+        var selectedIdx = [];
+        var remaining = allIVNames.map(function(_,i){return i;});
+
+        function runOLS(yD, xIdxArr) {
+            if (xIdxArr.length === 0) return null;
+            var xD = xIdxArr.map(function(i){return allXData[i];});
+            var nms = ['(Intercept)'].concat(xIdxArr.map(function(i){return allIVNames[i];}));
+            return Stats.linearRegression(yD, xD, nms);
+        }
+
+        if (method === 'backward') {
+            // Start with all variables
+            selectedIdx = allIVNames.map(function(_,i){return i;});
+            remaining = [];
+            var step = 0;
+            while (true) {
+                step++;
+                var model = runOLS(yData, selectedIdx);
+                if (!model) break;
+                // Find worst p-value among IVs (skip intercept at index 0)
+                var worstP = 0, worstCoefIdx = -1;
+                model.coefficients.forEach(function(c, ci) {
+                    if (ci === 0) return; // skip intercept
+                    if (c.p > worstP) { worstP = c.p; worstCoefIdx = ci; }
+                });
+                if (worstP > pOut && worstCoefIdx > 0) {
+                    var removedVarName = model.coefficients[worstCoefIdx].variable;
+                    var removedOrigIdx = allIVNames.indexOf(removedVarName);
+                    selectedIdx = selectedIdx.filter(function(i){return i !== removedOrigIdx;});
+                    steps.push({
+                        'Step': step, 'Action': 'Removed', 'Variable': removedVarName,
+                        'p-value': fmt(worstP), 'Criterion': 'p > ' + pOut,
+                        'R²': model.rSquared ? fmt(model.rSquared) : '',
+                        'Remaining Vars': selectedIdx.map(function(i){return allIVNames[i];}).join(', ')
+                    });
+                } else {
+                    steps.push({
+                        'Step': step, 'Action': 'Final Model', 'Variable': '—',
+                        'p-value': '—', 'Criterion': 'All p <= ' + pOut,
+                        'R²': model.rSquared ? fmt(model.rSquared) : '',
+                        'Remaining Vars': selectedIdx.map(function(i){return allIVNames[i];}).join(', ')
+                    });
+                    break;
+                }
+                if (selectedIdx.length === 0) break;
+            }
+        } else {
+            // Forward or Stepwise
+            var step = 0;
+            while (remaining.length > 0) {
+                step++;
+                var bestP = 1, bestIdx = -1;
+                // Try adding each remaining variable
+                remaining.forEach(function(ri) {
+                    var tryIdx = selectedIdx.concat([ri]);
+                    var model = runOLS(yData, tryIdx);
+                    if (model) {
+                        // Find p-value of newly added variable (last coefficient)
+                        var lastCoef = model.coefficients[model.coefficients.length - 1];
+                        if (lastCoef && lastCoef.p < bestP) {
+                            bestP = lastCoef.p; bestIdx = ri;
+                        }
+                    }
+                });
+                if (bestP <= pIn && bestIdx >= 0) {
+                    selectedIdx.push(bestIdx);
+                    remaining = remaining.filter(function(i){return i !== bestIdx;});
+                    var model = runOLS(yData, selectedIdx);
+                    steps.push({
+                        'Step': step, 'Action': 'Entered', 'Variable': allIVNames[bestIdx],
+                        'p-value': fmt(bestP), 'Criterion': 'p <= ' + pIn,
+                        'R²': model ? fmt(model.rSquared) : '',
+                        'Selected Vars': selectedIdx.map(function(i){return allIVNames[i];}).join(', ')
+                    });
+
+                    // Stepwise: after adding, check if any should be removed
+                    if (method === 'stepwise' && selectedIdx.length > 1) {
+                        var model2 = runOLS(yData, selectedIdx);
+                        if (model2) {
+                            var worstP2 = 0, worstCI2 = -1;
+                            model2.coefficients.forEach(function(c, ci) {
+                                if (ci === 0) return;
+                                if (c.p > worstP2) { worstP2 = c.p; worstCI2 = ci; }
+                            });
+                            if (worstP2 > pOut && worstCI2 > 0) {
+                                var removedName = model2.coefficients[worstCI2].variable;
+                                var removedOI = allIVNames.indexOf(removedName);
+                                selectedIdx = selectedIdx.filter(function(i){return i !== removedOI;});
+                                remaining.push(removedOI);
+                                step++;
+                                steps.push({
+                                    'Step': step, 'Action': 'Removed', 'Variable': removedName,
+                                    'p-value': fmt(worstP2), 'Criterion': 'p > ' + pOut,
+                                    'R²': '', 'Selected Vars': selectedIdx.map(function(i){return allIVNames[i];}).join(', ')
+                                });
+                            }
+                        }
+                    }
+                } else {
+                    steps.push({
+                        'Step': step, 'Action': 'Stopped', 'Variable': '—',
+                        'p-value': fmt(bestP), 'Criterion': 'No more p <= ' + pIn,
+                        'R²': '', 'Selected Vars': selectedIdx.map(function(i){return allIVNames[i];}).join(', ')
+                    });
+                    break;
+                }
+            }
+        }
+
+        return {
+            selectedVars: selectedIdx.map(function(i){return allIVNames[i];}),
+            selectedXData: selectedIdx.map(function(i){return allXData[i];}),
+            steps: steps
+        };
     }
 
     // =========================================================================
@@ -2659,6 +2929,10 @@
         if (ivs.length === 0) ivs = getSelected('logr-ivs');
         if (!dv || ivs.length === 0) { alert('Please select DV and at least one IV.'); return; }
 
+        var method = getSelectValue('logr-method') || 'enter';
+        var logrOpts = {};
+        document.querySelectorAll('input[name="logr-opt"]').forEach(function(cb) { logrOpts[cb.value] = cb.checked; });
+
         var yData = getColumnData(dv, true);
         var xData = ivs.map(function (iv) { return getColumnData(iv, true); });
         var minLen = Math.min(yData.length, Math.min.apply(null, xData.map(function (x) { return x.length; })));
@@ -2669,36 +2943,132 @@
         var result = Stats.logisticRegression(yData, xData, names);
         if (!result) { alert('Could not compute logistic regression. Check your data.'); return; }
 
+        // Method label
+        var methodLabels = {
+            'enter': 'Enter', 'forward-wald': 'Forward: Wald', 'forward-lr': 'Forward: LR',
+            'backward-wald': 'Backward: Wald', 'backward-lr': 'Backward: LR'
+        };
+        var methodLabel = methodLabels[method] || 'Enter';
+        var methodDescs = {
+            'enter': 'ใส่ตัวแปรอิสระทั้งหมดเข้าสมการพร้อมกัน',
+            'forward-wald': 'เพิ่มตัวแปรทีละตัว โดยใช้ Wald statistic เป็นเกณฑ์',
+            'forward-lr': 'เพิ่มตัวแปรทีละตัว โดยใช้ Likelihood Ratio เป็นเกณฑ์',
+            'backward-wald': 'เริ่มจากทุกตัวแปร แล้วตัดทีละตัว โดยใช้ Wald statistic',
+            'backward-lr': 'เริ่มจากทุกตัวแปร แล้วตัดทีละตัว โดยใช้ Likelihood Ratio'
+        };
+
         // Simple assumption check inline
         var logrAssumptionEl = document.getElementById('logr-assumptions');
         if (logrAssumptionEl) {
             var n = yData.length;
             var nOk = n >= 10 * (ivs.length + 1);
-            var checksHtml = '<div class="assumption-panel"><h4>\ud83d\udd0d Assumption Check</h4>';
+            var checksHtml = '<div class="assumption-panel"><h4>🔍 Assumption Check</h4>';
             checksHtml += '<table class="result-table"><thead><tr><th>Check</th><th>Result</th><th>Status</th></tr></thead><tbody>';
-            checksHtml += '<tr><td>Sample Size (10 per predictor)</td><td>N=' + n + ', needed>=' + (10*(ivs.length+1)) + '</td><td>' + (nOk ? '\u2705' : '\u26a0\ufe0f') + '</td></tr>';
-            checksHtml += '<tr><td>DV is Binary (0/1)</td><td>Check data</td><td>\u2139\ufe0f</td></tr>';
+            checksHtml += '<tr><td>Sample Size (10 per predictor)</td><td>N=' + n + ', needed>=' + (10*(ivs.length+1)) + '</td><td>' + (nOk ? '✅' : '⚠️') + '</td></tr>';
+            checksHtml += '<tr><td>DV is Binary (0/1)</td><td>Check data</td><td>ℹ️</td></tr>';
             checksHtml += '</tbody></table></div>';
             logrAssumptionEl.innerHTML = checksHtml;
             logrAssumptionEl.style.display = 'block';
         }
 
-        var extras = [{
-            title: 'Model Summary',
-            data: [{ 'Accuracy': fmt(result.accuracy * 100, 2) + '%', 'AIC': fmt(result.aic) }]
-        }];
+        var extras = [];
 
-        var mainRows = result.coefficients.map(function (c) {
-            return {
-                Variable: c.variable,
-                B: fmt(c.b), 'S.E.': fmt(c.se),
-                Wald: fmt(c.wald),
-                'p-value': Stats.formatPValue(c.p),
-                'Odds Ratio': fmt(c.or)
-            };
+        // 1. Method Information
+        extras.push({
+            title: 'Method / กระบวนการสร้างโมเดล',
+            data: [{
+                'Method': methodLabel,
+                'Description': methodDescs[method] || method,
+                'DV': dv,
+                'IVs': ivs.join(', '),
+                'N': yData.length,
+                'N (Event=1)': yData.filter(function(v){return v>=0.5;}).length,
+                'N (Event=0)': yData.filter(function(v){return v<0.5;}).length,
+                'Convergence': result.converged !== false ? 'Yes' : 'No',
+                'Iterations': result.iterations || 'N/A'
+            }]
         });
 
-        state.results['logr'] = { data: mainRows, title: 'Logistic Regression Coefficients', extras: extras };
+        // 2. Model Summary
+        var n = yData.length;
+        var n1 = yData.filter(function(v){return v>=0.5;}).length;
+        var n0 = n - n1;
+        var nullLL = n1 * Math.log(n1/n) + n0 * Math.log(n0/n);
+        var modelLL = result.logLikelihood || (result.aic ? -(result.aic/2 - ivs.length - 1) : nullLL);
+        var chiSq = -2 * (nullLL - modelLL);
+        var dfChi = ivs.length;
+        var pChi = chiSq > 0 ? (1 - jStat.chisquare.cdf(chiSq, dfChi)) : 1;
+        var coxSnell = 1 - Math.exp(-chiSq / n);
+        var nagelkerke = coxSnell > 0 ? coxSnell / (1 - Math.exp(2 * nullLL / n)) : 0;
+
+        extras.push({
+            title: 'Model Summary',
+            data: [{
+                'Method': methodLabel,
+                '-2 Log Likelihood': fmt(-2 * modelLL),
+                'Chi-square': fmt(chiSq),
+                'df': dfChi,
+                'Sig.': fmt(pChi),
+                "Cox & Snell R²": fmt(coxSnell),
+                "Nagelkerke R²": fmt(nagelkerke),
+                'Accuracy': fmt(result.accuracy * 100, 1) + '%',
+                'AIC': fmt(result.aic)
+            }]
+        });
+
+        // 3. Omnibus Test of Model Coefficients
+        extras.push({
+            title: 'Omnibus Tests of Model Coefficients',
+            data: [
+                { 'Test': 'Step', 'Chi-square': fmt(chiSq), 'df': dfChi, 'Sig.': fmt(pChi) },
+                { 'Test': 'Block', 'Chi-square': fmt(chiSq), 'df': dfChi, 'Sig.': fmt(pChi) },
+                { 'Test': 'Model', 'Chi-square': fmt(chiSq), 'df': dfChi, 'Sig.': fmt(pChi) }
+            ]
+        });
+
+        // 4. Classification Table
+        if (logrOpts.classification) {
+            var tp=0,tn=0,fp=0,fn=0;
+            yData.forEach(function(y,i) {
+                var pred = result.coefficients[0].b;
+                xData.forEach(function(xd,j) { pred += result.coefficients[j+1].b * xd[i]; });
+                var prob = 1 / (1 + Math.exp(-pred));
+                var predClass = prob >= 0.5 ? 1 : 0;
+                var actual = y >= 0.5 ? 1 : 0;
+                if (actual===1 && predClass===1) tp++;
+                else if (actual===0 && predClass===0) tn++;
+                else if (actual===0 && predClass===1) fp++;
+                else fn++;
+            });
+            extras.push({
+                title: 'Classification Table (Cut-off = 0.50)',
+                data: [
+                    { 'Observed': 'Event=0', 'Predicted 0': tn, 'Predicted 1': fp, '% Correct': fmt(tn/(tn+fp)*100,1)+'%' },
+                    { 'Observed': 'Event=1', 'Predicted 0': fn, 'Predicted 1': tp, '% Correct': fmt(tp/(tp+fn)*100,1)+'%' },
+                    { 'Observed': 'Overall', 'Predicted 0': '', 'Predicted 1': '', '% Correct': fmt((tp+tn)/n*100,1)+'%' }
+                ]
+            });
+        }
+
+        // 5. Coefficients (Variables in the Equation)
+        var mainRows = result.coefficients.map(function (c) {
+            var row = {
+                Variable: c.variable,
+                B: fmt(c.b), 'S.E.': fmt(c.se),
+                Wald: fmt(c.wald), df: 1,
+                'Sig.': Stats.formatPValue(c.p),
+                'Exp(B) / OR': fmt(c.or)
+            };
+            if (logrOpts.ci) {
+                var orLo = Math.exp(c.b - 1.96 * c.se);
+                var orHi = Math.exp(c.b + 1.96 * c.se);
+                row['95% CI Lower'] = fmt(orLo);
+                row['95% CI Upper'] = fmt(orHi);
+            }
+            return row;
+        });
+
+        state.results['logr'] = { data: mainRows, title: 'Variables in the Equation (Method: ' + methodLabel + ')', extras: extras };
         displayResults('logr');
     }
 
@@ -3322,27 +3692,47 @@
         var steps = Stats.hierarchicalRegression(y, blocks, names);
         if (!steps || steps.length === 0) { alert('ไม่สามารถวิเคราะห์ได้'); return; }
 
+        var extras = [];
+
+        // 1. Method Information
+        var blockInfo = 'Block 1: ' + b1Vars.join(', ');
+        if (b2Vars.length > 0) blockInfo += ' → Block 2: ' + b2Vars.join(', ');
+        extras.push({
+            title: 'Method / กระบวนการสร้างโมเดล',
+            data: [{
+                'Method': 'Hierarchical (Enter per Block)',
+                'Description': 'ใส่ตัวแปรเป็นลำดับขั้น (Block) เพื่อดูว่าแต่ละ Block เพิ่มอำนาจพยากรณ์ (R² Change) ได้เท่าไหร่',
+                'DV': dv,
+                'Block Structure': blockInfo,
+                'Number of Blocks': blocks.length,
+                'Total IVs': b1Vars.length + b2Vars.length,
+                'N': y.length
+            }]
+        });
+
+        // 2. Model Comparison Summary
         var modelRows = steps.map(function(s) {
             return {
-                'Step':s.step, 'R':fmt(s.r), 'R²':fmt(s.rSquared), 'Adj R²':fmt(s.adjRSquared),
+                'Model/Step':s.step, 'R':fmt(s.r), 'R²':fmt(s.rSquared), 'Adj R²':fmt(s.adjRSquared),
                 'R² Change':fmt(s.r2Change), 'F Change':fmt(s.fChange),
                 'df1':s.df1Change, 'df2':s.df2Change,
                 'Sig. F Change':Stats.formatPValue(s.pChange),
-                'Vars Added':s.varsAdded.join(', ')
+                'Variables in Model':s.varsAdded.join(', '),
+                'Interpretation': s.pChange < 0.05 ? 'Block นี้เพิ่ม R² อย่างมีนัยสำคัญ' : 'Block นี้ไม่เพิ่ม R² อย่างมีนัยสำคัญ'
             };
         });
 
-        var extras = [];
+        // 3. Coefficients per step
         steps.forEach(function(s) {
             if (s.coefficients) {
                 var coefRows = s.coefficients.map(function(c){
-                    return {Variable:c.variable,B:fmt(c.b),'S.E.':fmt(c.se),t:fmt(c.t),'p-value':Stats.formatPValue(c.p),'95% CI':c.ci95||''};
+                    return {Variable:c.variable,B:fmt(c.b),'S.E.':fmt(c.se),'Beta (Std.)':c.beta!==undefined?fmt(c.beta):'',t:fmt(c.t),'Sig.':Stats.formatPValue(c.p),'95% CI':c.ci95||''};
                 });
-                extras.push({title:'Step '+s.step+' Coefficients',data:coefRows});
+                extras.push({title:'Model '+s.step+' — Coefficients (Variables: '+s.varsAdded.join(', ')+')',data:coefRows});
             }
         });
 
-        state.results['hreg'] = {data:modelRows, title:'Hierarchical Regression — Model Summary', extras:extras};
+        state.results['hreg'] = {data:modelRows, title:'Hierarchical Regression — Model Comparison (Method: Hierarchical Enter)', extras:extras};
         displayResults('hreg');
     }
 
@@ -4670,31 +5060,62 @@
         var ivNames = getCheckedVars('mreg-iv-picker');
         if (!dvName || !ivNames || ivNames.length < 2) { alert('กรุณาเลือก DV 1 ตัว และ IV อย่างน้อย 2 ตัว'); return; }
 
+        var method = getSelectValue('mreg-method') || 'enter';
+        var methodLabels = {'enter':'Enter','stepwise':'Stepwise','forward':'Forward','backward':'Backward'};
+        var methodLabel = methodLabels[method] || 'Enter';
+
         // Build data matrix
-        var rows = [];
+        var dataRows = [];
         state.data.forEach(function(r){
             var y = parseFloat(r[dvName]);
             var xs = ivNames.map(function(iv){return parseFloat(r[iv]);});
-            if (!isNaN(y) && xs.every(function(x){return !isNaN(x);})) rows.push({y:y,xs:xs});
+            if (!isNaN(y) && xs.every(function(x){return !isNaN(x);})) dataRows.push({y:y,xs:xs});
         });
-        var n = rows.length; var p = ivNames.length;
-        if (n <= p+1) { alert('ข้อมูลไม่เพียงพอสำหรับจำนวนตัวแปรอิสระ'); return; }
+        var n = dataRows.length; var origP = ivNames.length;
+        if (n <= origP+1) { alert('ข้อมูลไม่เพียงพอสำหรับจำนวนตัวแปรอิสระ'); return; }
 
-        // Simple OLS using normal equations (with intercept)
-        var Y = rows.map(function(r){return r.y;});
-        var X = rows.map(function(r){return [1].concat(r.xs);}); // add intercept
+        var Y = dataRows.map(function(r){return r.y;});
+        var allXData = ivNames.map(function(_,idx){ return dataRows.map(function(r){return r.xs[idx];}); });
+
+        // Variable selection
+        var selectedIVs = ivNames.slice();
+        var selectedXData = allXData.slice();
+        var stepLog = [];
+
+        if (method !== 'enter') {
+            var pIn = 0.05, pOut = 0.10;
+            var stepResult = _stepwiseRegression(Y, allXData, ivNames, method, pIn, pOut);
+            selectedIVs = stepResult.selectedVars;
+            selectedXData = stepResult.selectedXData;
+            stepLog = stepResult.steps;
+            if (selectedIVs.length === 0) { alert('ไม่มีตัวแปรใดผ่านเกณฑ์'); return; }
+        }
+
+        var p = selectedIVs.length;
+
+        // OLS
+        var X = dataRows.map(function(r){
+            var row = [1];
+            selectedIVs.forEach(function(iv){
+                var idx = ivNames.indexOf(iv);
+                row.push(r.xs[idx]);
+            });
+            return row;
+        });
         var Xt = jStat.transpose(X);
         var XtX = jStat.multiply(Xt,X);
         var XtXinv;
-        try { XtXinv = jStat.inv(XtX); } catch(e) { alert('Matrix singular — ตัวแปรอาจมี Multicollinearity สูง'); return; }
-        var XtY = jStat.multiply(Xt,[Y]); // col vector
+        try { XtXinv = jStat.inv(XtX); } catch(e) { alert('Matrix singular — Multicollinearity สูง'); return; }
+        var XtY = jStat.multiply(Xt,[Y]);
         var beta = jStat.multiply(XtXinv,jStat.transpose(XtY));
         var betas = beta.map(function(b){return b[0];});
 
-        // Predictions and residuals
-        var yPred = rows.map(function(r,i){
+        var yPred = dataRows.map(function(r,i){
             var pred = betas[0];
-            r.xs.forEach(function(x,j){pred += betas[j+1]*x;});
+            selectedIVs.forEach(function(iv,j){
+                var idx = ivNames.indexOf(iv);
+                pred += betas[j+1]*r.xs[idx];
+            });
             return pred;
         });
         var yMean = jStat.mean(Y);
@@ -4706,24 +5127,105 @@
         var F = MSR/MSE;
         var pF = 1-jStat.centralF.cdf(F,p,n-p-1);
 
-        var extras = [{title:'Model Summary',data:[{R:fmt(Math.sqrt(R2)),'R²':fmt(R2),'Adjusted R²':fmt(adjR2),'Std. Error':fmt(Math.sqrt(MSE)),N:n}]},
-            {title:'ANOVA',data:[{Source:'Regression',SS:fmt(SSR),df:p,MS:fmt(MSR),F:fmt(F),'Sig.':fmt(pF)},{Source:'Residual',SS:fmt(SSE),df:n-p-1,MS:fmt(MSE),F:'','Sig.':''},{Source:'Total',SS:fmt(SST),df:n-1,MS:'',F:'','Sig.':''}]}];
+        // Durbin-Watson
+        var residuals = Y.map(function(y,i){return y - yPred[i];});
+        var dwNum = 0;
+        for (var di=1;di<residuals.length;di++) dwNum+=Math.pow(residuals[di]-residuals[di-1],2);
+        var dwDen = 0; residuals.forEach(function(r){dwDen+=r*r;});
+        var dw = dwDen > 0 ? dwNum/dwDen : 0;
+
+        var extras = [];
+
+        // 1. Method
+        var methodDescs = {
+            'enter':'ใส่ตัวแปรอิสระทั้งหมดเข้าสมการพร้อมกัน',
+            'stepwise':'เพิ่ม/ลดตัวแปรอัตโนมัติ (p-in=0.05, p-out=0.10)',
+            'forward':'เพิ่มตัวแปรทีละตัว (p-in=0.05)',
+            'backward':'เริ่มจากทุกตัว แล้วตัดทีละตัว (p-out=0.10)'
+        };
+        extras.push({title:'Method / กระบวนการสร้างโมเดล',data:[{
+            'Method':methodLabel,'Description':methodDescs[method]||'','DV':dvName,
+            'Candidate IVs':ivNames.join(', '),'Selected IVs':selectedIVs.join(', '),
+            'Entered':p,'Excluded':origP-p,'N':n
+        }]});
+
+        // 2. Step log
+        if (stepLog.length > 0) extras.push({title:'Variable Selection Steps',data:stepLog});
+
+        // 3. Model Summary
+        extras.push({title:'Model Summary',data:[{
+            'Method':methodLabel,R:fmt(Math.sqrt(R2)),'R²':fmt(R2),'Adjusted R²':fmt(adjR2),
+            'Std. Error':fmt(Math.sqrt(MSE)),'Durbin-Watson':fmt(dw),N:n
+        }]});
+
+        // 4. ANOVA
+        extras.push({title:'ANOVA',data:[
+            {Source:'Regression',SS:fmt(SSR),df:p,MS:fmt(MSR),F:fmt(F),'Sig.':fmt(pF)},
+            {Source:'Residual',SS:fmt(SSE),df:n-p-1,MS:fmt(MSE),F:'','Sig.':''},
+            {Source:'Total',SS:fmt(SST),df:n-1,MS:'',F:'','Sig.':''}
+        ]});
+
+        // 5. Collinearity
+        if (p > 1) {
+            var collinRows = [];
+            selectedIVs.forEach(function(ivN,idx){
+                var xi = selectedXData[idx];
+                var otherX = selectedXData.filter(function(_,j){return j!==idx;});
+                var otherNms = ['(Intercept)'].concat(selectedIVs.filter(function(_,j){return j!==idx;}));
+                var regI = Stats.linearRegression(xi, otherX, otherNms);
+                var r2i = regI ? regI.rSquared : 0;
+                var tol = 1-r2i; var vif = tol>0 ? 1/tol : 999;
+                collinRows.push({Variable:ivN,Tolerance:fmt(tol),VIF:fmt(vif),Status:vif>10?'Multicollinearity!':(vif>5?'Warning':'OK')});
+            });
+            extras.push({title:'Collinearity Diagnostics',data:collinRows});
+        }
 
         // Coefficients
         var se_beta = [];
         for (var i=0;i<=p;i++) se_beta.push(Math.sqrt(XtXinv[i][i]*MSE));
-        var coeffRows = [{Variable:'(Constant)',B:fmt(betas[0]),'S.E.':fmt(se_beta[0]),Beta:'—',t:fmt(betas[0]/se_beta[0]),'Sig.':fmt(2*(1-jStat.studentt.cdf(Math.abs(betas[0]/se_beta[0]),n-p-1)))}];
-        // Standardized coefficients
+        var coeffRows = [{Variable:'(Constant)',B:fmt(betas[0]),'S.E.':fmt(se_beta[0]),'Beta (Std.)':'—',t:fmt(betas[0]/se_beta[0]),'Sig.':fmt(2*(1-jStat.studentt.cdf(Math.abs(betas[0]/se_beta[0]),n-p-1)))}];
         var sdY = jStat.stdev(Y,true);
-        ivNames.forEach(function(iv,idx){
-            var sdX = jStat.stdev(rows.map(function(r){return r.xs[idx];}),true);
+        selectedIVs.forEach(function(iv,idx){
+            var origIdx = ivNames.indexOf(iv);
+            var sdX = jStat.stdev(dataRows.map(function(r){return r.xs[origIdx];}),true);
             var stdBeta = betas[idx+1]*(sdX/sdY);
             var tVal = betas[idx+1]/se_beta[idx+1];
             var pVal = 2*(1-jStat.studentt.cdf(Math.abs(tVal),n-p-1));
-            coeffRows.push({Variable:iv,B:fmt(betas[idx+1]),'S.E.':fmt(se_beta[idx+1]),Beta:fmt(stdBeta),t:fmt(tVal),'Sig.':fmt(pVal)});
+            var ci95Lo = betas[idx+1] - jStat.studentt.inv(0.975,n-p-1)*se_beta[idx+1];
+            var ci95Hi = betas[idx+1] + jStat.studentt.inv(0.975,n-p-1)*se_beta[idx+1];
+            // VIF inline
+            var xi = selectedXData[idx];
+            var otherX2 = selectedXData.filter(function(_,j){return j!==idx;});
+            var otherNms2 = ['(Intercept)'].concat(selectedIVs.filter(function(_,j){return j!==idx;}));
+            var regI2 = p>1 ? Stats.linearRegression(xi, otherX2, otherNms2) : null;
+            var tol2 = regI2 ? 1-regI2.rSquared : 1;
+            var vif2 = tol2>0 ? 1/tol2 : 999;
+            coeffRows.push({Variable:iv,B:fmt(betas[idx+1]),'S.E.':fmt(se_beta[idx+1]),'Beta (Std.)':fmt(stdBeta),t:fmt(tVal),'Sig.':fmt(pVal),'95% CI':'['+fmt(ci95Lo)+', '+fmt(ci95Hi)+']',Tolerance:fmt(tol2),VIF:fmt(vif2)});
         });
 
-        state.results['mreg'] = {data:coeffRows, title:'Multiple Regression: '+dvName+' = f('+ivNames.join(', ')+')', extras:extras};
+        // 6. Residual Statistics
+        var sdRes = jStat.stdev(residuals,true);
+        var stdRes = residuals.map(function(r){return r/sdRes;});
+        extras.push({title:'Residual Statistics',data:[
+            {Statistic:'Predicted Value',Min:fmt(jStat.min(yPred)),Max:fmt(jStat.max(yPred)),Mean:fmt(jStat.mean(yPred)),'S.D.':fmt(jStat.stdev(yPred,true))},
+            {Statistic:'Residual',Min:fmt(jStat.min(residuals)),Max:fmt(jStat.max(residuals)),Mean:fmt(jStat.mean(residuals)),'S.D.':fmt(sdRes)},
+            {Statistic:'Std. Residual',Min:fmt(jStat.min(stdRes)),Max:fmt(jStat.max(stdRes)),Mean:fmt(jStat.mean(stdRes)),'S.D.':fmt(jStat.stdev(stdRes,true))}
+        ]});
+
+        // 7. Excluded Variables
+        if (method !== 'enter') {
+            var excl = ivNames.filter(function(v){return selectedIVs.indexOf(v)===-1;});
+            if (excl.length > 0) {
+                var exclRows = excl.map(function(v){
+                    var idx = ivNames.indexOf(v);
+                    var r = jStat.corrcoeff(allXData[idx], Y);
+                    return {Variable:v,'Bivariate Corr.':fmt(r),Status:'Excluded'};
+                });
+                extras.push({title:'Excluded Variables',data:exclRows});
+            }
+        }
+
+        state.results['mreg'] = {data:coeffRows, title:'Multiple Regression Coefficients (Method: '+methodLabel+')', extras:extras};
         displayResults('mreg');
     }
 

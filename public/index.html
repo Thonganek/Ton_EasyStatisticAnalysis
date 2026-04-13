@@ -1711,6 +1711,31 @@
                     <div id="lr-iv-picker"></div>
                 </div>
                 <div class="form-group">
+                    <label for="lr-method">Method (วิธีสร้างโมเดล)</label>
+                    <select id="lr-method" class="form-select">
+                        <option value="enter" selected>Enter — ใส่ตัวแปรทั้งหมด</option>
+                        <option value="stepwise">Stepwise — คัดเลือกอัตโนมัติ (เพิ่ม/ลด)</option>
+                        <option value="forward">Forward — เพิ่มทีละตัว</option>
+                        <option value="backward">Backward — ตัดทีละตัว</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Criteria (สำหรับ Stepwise/Forward/Backward)</label>
+                    <div class="form-row">
+                        <div class="form-group"><label>p-in (เข้าโมเดล)</label><input type="number" id="lr-pin" class="form-input" value="0.05" step="0.01" min="0.01" max="0.50"></div>
+                        <div class="form-group"><label>p-out (ออกจากโมเดล)</label><input type="number" id="lr-pout" class="form-input" value="0.10" step="0.01" min="0.01" max="0.50"></div>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Display Options</label>
+                    <div class="checkbox-group">
+                        <label class="checkbox-label"><input type="checkbox" name="lr-opt" value="collinearity" checked> Collinearity (Tolerance / VIF)</label>
+                        <label class="checkbox-label"><input type="checkbox" name="lr-opt" value="durbin" checked> Durbin-Watson</label>
+                        <label class="checkbox-label"><input type="checkbox" name="lr-opt" value="residuals" checked> Residual Statistics</label>
+                        <label class="checkbox-label"><input type="checkbox" name="lr-opt" value="correlation"> Correlation Matrix</label>
+                    </div>
+                </div>
+                <div class="form-group">
                     <label for="lr-alpha">Significance Level (Alpha)</label>
                     <select id="lr-alpha" class="var-select">
                         <option value="0.05" selected>0.05</option>
@@ -1768,7 +1793,7 @@
 
             <div class="card">
                 <div class="form-group">
-                    <label for="logr-dv">Dependent Variable (DV)</label>
+                    <label for="logr-dv">Dependent Variable (DV) — Binary 0/1</label>
                     <select id="logr-dv" class="var-select" style="display:none"></select>
                     <div id="logr-dv-picker"></div>
                 </div>
@@ -1777,6 +1802,25 @@
                     <label for="logr-ivs">Independent Variables (IVs)</label>
                     <select id="logr-ivs" class="var-select" multiple style="display:none"></select>
                     <div id="logr-iv-picker"></div>
+                </div>
+                <div class="form-group">
+                    <label for="logr-method">Method (วิธีสร้างโมเดล)</label>
+                    <select id="logr-method" class="form-select">
+                        <option value="enter" selected>Enter — ใส่ตัวแปรทั้งหมด</option>
+                        <option value="forward-wald">Forward: Wald — เพิ่มทีละตัว (Wald)</option>
+                        <option value="forward-lr">Forward: LR — เพิ่มทีละตัว (Likelihood Ratio)</option>
+                        <option value="backward-wald">Backward: Wald — ตัดทีละตัว (Wald)</option>
+                        <option value="backward-lr">Backward: LR — ตัดทีละตัว (Likelihood Ratio)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Display Options</label>
+                    <div class="checkbox-group">
+                        <label class="checkbox-label"><input type="checkbox" name="logr-opt" value="classification" checked> Classification Table</label>
+                        <label class="checkbox-label"><input type="checkbox" name="logr-opt" value="hosmer" checked> Hosmer-Lemeshow Test</label>
+                        <label class="checkbox-label"><input type="checkbox" name="logr-opt" value="ci" checked> 95% CI for Odds Ratio</label>
+                        <label class="checkbox-label"><input type="checkbox" name="logr-opt" value="correlation"> Correlation Matrix</label>
+                    </div>
                 </div>
                 <div class="form-group">
                     <label for="logr-alpha">Significance Level (Alpha)</label>
