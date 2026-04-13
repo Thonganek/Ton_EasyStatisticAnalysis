@@ -104,6 +104,7 @@
                 </div>
                 <div class="menu-group-items">
                     <button class="menu-item active" onclick="navigateTo('home')">Home</button>
+                    <button class="menu-item" onclick="navigateTo('demographics')">ข้อมูลทั่วไป (Demographics)</button>
                     <button class="menu-item" onclick="navigateTo('descriptive')">Descriptive</button>
                     <button class="menu-item" onclick="navigateTo('numeric')">Numeric</button>
                     <button class="menu-item" onclick="navigateTo('nominal')">Nominal</button>
@@ -243,6 +244,67 @@
                 <div class="feature-card-lg">
                     <h4>🤖 AI-Powered Insights</h4>
                     <p>Automated interpretation of your results</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================================================== -->
+        <!-- PAGE: DEMOGRAPHICS (ข้อมูลทั่วไป)                    -->
+        <!-- ================================================== -->
+        <div class="page" id="page-demographics">
+            <h2 class="page-title">👤 วิเคราะห์ข้อมูลทั่วไป (Demographics)</h2>
+
+            <details class="stat-guide">
+                <summary>📖 วิธีใช้งาน</summary>
+                <div class="stat-guide-content">
+                    <p><strong>วัตถุประสงค์:</strong> สร้างตารางแสดงคุณลักษณะส่วนบุคคลของกลุ่มตัวอย่าง สำหรับบทที่ 4</p>
+                    <p><strong>ผลลัพธ์:</strong> ตารางความถี่ ร้อยละ พร้อมระบุ N รวม — พร้อมใช้ในวิทยานิพนธ์</p>
+                    <p><strong>ตัวอย่างตัวแปร:</strong> เพศ, อายุ, ระดับการศึกษา, สถานภาพ, รายได้, อาชีพ, ประสบการณ์</p>
+                    <p><strong>รองรับ:</strong></p>
+                    <ul>
+                        <li><strong>ตัวแปรเชิงกลุ่ม</strong> (Categorical) — นับความถี่ ร้อยละ เช่น เพศ ระดับการศึกษา</li>
+                        <li><strong>ตัวแปรเชิงปริมาณ</strong> (Numeric) — แสดง Mean, S.D., Min, Max เช่น อายุ รายได้</li>
+                    </ul>
+                </div>
+            </details>
+
+            <div class="card">
+                <h3>เลือกตัวแปรคุณลักษณะส่วนบุคคล</h3>
+                <p style="color:#64748b;font-size:0.85rem;margin:0 0 12px">เลือกตัวแปรที่ต้องการนำมาสร้างตารางข้อมูลทั่วไป เช่น เพศ อายุ ระดับการศึกษา สถานภาพสมรส รายได้</p>
+                <div id="demo-picker"></div>
+
+                <div class="form-group" style="margin-top:12px">
+                    <label>ชื่อตาราง</label>
+                    <input type="text" id="demo-table-title" class="form-input" value="จำนวนและร้อยละของกลุ่มตัวอย่าง จำแนกตามคุณลักษณะส่วนบุคคล" placeholder="ชื่อตาราง">
+                </div>
+
+                <div class="form-group">
+                    <label>ตัวแปรเชิงปริมาณ (แสดง Mean, S.D. แทนความถี่)</label>
+                    <div id="demo-numeric-picker"></div>
+                </div>
+
+                <button class="btn btn-primary" onclick="runAnalysis('demographics')">สร้างตาราง</button>
+            </div>
+
+            <div id="demo-results" class="results-area">
+                <div id="demo-extras"></div>
+                <div id="demo-table"></div>
+                <div class="ai-section">
+                    <div class="interp-options">
+                        <label class="form-label">📝 รูปแบบการแปลผล</label>
+                        <select id="demo-interp-format" class="form-select interp-select">
+                            <option value="chapter4" selected>บทที่ 4 — เชิงวิชาการ (APA)</option>
+                            <option value="abstract">บทคัดย่อ — สรุปสั้น</option>
+                            <option value="presentation">สไลด์นำเสนอ</option>
+                            <option value="explain">อธิบายให้เข้าใจง่าย</option>
+                        </select>
+                    </div>
+                    <button class="btn btn-ai" onclick="aiAnalyze('demo')">🤖 AI วิเคราะห์ผล — สรุปบทที่ 4</button>
+                    <div id="demo-ai-result" class="ai-result-box" style="display:none"></div>
+                </div>
+                <div class="export-area">
+                    <button class="btn btn-export" onclick="exportExcel('demo')">📥 Download Excel</button>
+                    <button class="btn btn-export" onclick="exportWord('demo')">📥 Download Word</button>
                 </div>
             </div>
         </div>

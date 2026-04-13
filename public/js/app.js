@@ -204,6 +204,7 @@
 
     function getPagePrefixMap() {
         return {
+            'demographics': 'demo',
             'descriptive': 'desc',
             'numeric': 'num',
             'nominal': 'nom',
@@ -435,6 +436,9 @@
             {id: 'fe-var1-picker', filter: 'all', label: 'Variable 1'},
             {id: 'fe-var2-picker', filter: 'all', label: 'Variable 2'},
             {id: 'cq-picker', filter: 'numeric', label: 'Conditions (0/1, 3+)'},
+            // Demographics
+            {id: 'demo-picker', filter: 'all', label: 'เลือกตัวแปรคุณลักษณะส่วนบุคคล'},
+            {id: 'demo-numeric-picker', filter: 'numeric', label: 'ตัวแปรที่เป็นตัวเลข (แสดง Mean, S.D.)'},
         ];
         pickerConfigs.forEach(function(cfg) {
             var el = document.getElementById(cfg.id);
@@ -948,6 +952,7 @@
 
         try {
             switch (type) {
+                case 'demographics': runDemographics(); break;
                 case 'descriptive': runDescriptive(); break;
                 case 'numeric': runNumeric(); break;
                 case 'nominal': runNominal(); break;
@@ -997,6 +1002,98 @@
             alert('Error running analysis: ' + err.message);
             console.error(err);
         }
+    }
+
+    // =========================================================================
+    // Demographics (ข้อมูลทั่วไป / คุณลักษณะส่วนบุคคล)
+    // =========================================================================
+
+    function runDemographics() {
+        var vars = getCheckedVars('demo-picker');
+        if (vars.length === 0) { alert('กรุณาเลือกตัวแปรอย่างน้อย 1 ตัว'); return; }
+        var numericVars = getCheckedVars('demo-numeric-picker');
+        var tableTitle = (document.getElementById('demo-table-title') || {}).value || 'คุณลักษณะส่วนบุคคลของกลุ่มตัวอย่าง';
+        var totalN = state.data.length;
+
+        // Build the demographics table: Variable | Category | n | %
+        var rows = [];
+        var rowNum = 1;
+
+        vars.forEach(function(varName) {
+            var isNumeric = numericVars.indexOf(varName) !== -1;
+
+            if (isNumeric) {
+                // Numeric variable: show Mean, S.D., Min, Max
+                var values = getColumnData(varName, true);
+                if (values.length === 0) return;
+                var desc = Stats.descriptive(values);
+                rows.push({
+                    'ลำดับ': rowNum++,
+                    'คุณลักษณะ': varName,
+                    'รายการ': 'Mean = ' + fmt(desc.mean, 2) + ', S.D. = ' + fmt(desc.sd, 2),
+                    'จำนวน (n)': desc.n,
+                    'ร้อยละ': '-',
+                });
+                rows.push({
+                    'ลำดับ': '',
+                    'คุณลักษณะ': '',
+                    'รายการ': 'Min = ' + fmt(desc.min, 2) + ', Max = ' + fmt(desc.max, 2),
+                    'จำนวน (n)': '',
+                    'ร้อยละ': '',
+                });
+            } else {
+                // Categorical variable: frequency table
+                var valueCounts = {};
+                var total = 0;
+                state.data.forEach(function(row) {
+                    var val = row[varName];
+                    if (val === null || val === undefined || val === '') return;
+                    var key = String(val);
+                    valueCounts[key] = (valueCounts[key] || 0) + 1;
+                    total++;
+                });
+
+                // Sort by frequency descending
+                var sorted = Object.keys(valueCounts).sort(function(a, b) {
+                    return valueCounts[b] - valueCounts[a];
+                });
+
+                var isFirst = true;
+                sorted.forEach(function(cat) {
+                    var count = valueCounts[cat];
+                    var pct = total > 0 ? (count / total * 100) : 0;
+                    rows.push({
+                        'ลำดับ': isFirst ? rowNum : '',
+                        'คุณลักษณะ': isFirst ? varName : '',
+                        'รายการ': cat,
+                        'จำนวน (n)': count,
+                        'ร้อยละ': fmt(pct, 1),
+                    });
+                    isFirst = false;
+                });
+                rowNum++;
+            }
+        });
+
+        // Add total row
+        rows.push({
+            'ลำดับ': '',
+            'คุณลักษณะ': '',
+            'รายการ': 'รวม (Total)',
+            'จำนวน (n)': totalN,
+            'ร้อยละ': '100.0',
+        });
+
+        // Explicit column order
+        var columns = ['ลำดับ', 'คุณลักษณะ', 'รายการ', 'จำนวน (n)', 'ร้อยละ'];
+
+        state.results['demo'] = {
+            data: rows,
+            columns: columns,
+            title: tableTitle + ' (N = ' + totalN + ')',
+            extras: []
+        };
+        displayResults('demo');
     }
 
     // =========================================================================
