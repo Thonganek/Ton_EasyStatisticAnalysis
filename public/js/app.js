@@ -1095,9 +1095,15 @@
                         });
                         isFirst = false;
                     }
+                    // Always add Mean/S.D. summary row under interval rows
+                    rows.push({
+                        'ลำดับ': '', 'คุณลักษณะ': '',
+                        'รายการ': 'Mean = ' + fmt(desc.mean, 2) + ',  S.D. = ' + fmt(desc.sd, 2) + ',  Min = ' + fmt(desc.min, 2) + ',  Max = ' + fmt(desc.max, 2),
+                        'จำนวน (n)': desc.n, 'ร้อยละ': '-',
+                    });
                     rowNum++;
                 } else {
-                    // Show Mean, S.D., Min, Max in รายการ column (same row)
+                    // No intervals: show Mean, S.D., Min, Max in รายการ column
                     rows.push({
                         'ลำดับ': rowNum++, 'คุณลักษณะ': varName,
                         'รายการ': 'Mean = ' + fmt(desc.mean, 2) + ',  S.D. = ' + fmt(desc.sd, 2) + ',  Min = ' + fmt(desc.min, 2) + ',  Max = ' + fmt(desc.max, 2),
@@ -1336,67 +1342,136 @@
     var likertGroups = []; // [{name:'ด้านที่ 1', vars:['q1','q2','q3']}, ...]
 
     function addLikertGroup() {
+        var vars = getCheckedVars('lk-picker');
+        if (vars.length === 0) { alert('กรุณาเลือกตัวแปร (ข้อคำถาม) ก่อน แล้วค่อยเพิ่มกลุ่ม'); return; }
+
         var container = document.getElementById('lk-groups-container');
         if (!container) return;
-        var idx = container.querySelectorAll('.lk-group-row').length;
+        var idx = container.querySelectorAll('.lk-group-box').length;
+        var groupName = 'ด้านที่ ' + (idx + 1);
+
+        // Find vars not yet assigned to any group
+        var usedVars = [];
+        likertGroups.forEach(function(g) { usedVars = usedVars.concat(g.vars); });
+        var availableVars = vars.filter(function(v) { return usedVars.indexOf(v) === -1; });
+
+        likertGroups.push({ name: groupName, vars: [] });
+
         var div = document.createElement('div');
-        div.className = 'lk-group-row';
-        div.setAttribute('data-group', idx);
-        div.innerHTML = '<input type="text" class="form-input lk-group-name" placeholder="ชื่อกลุ่ม/ด้าน" style="flex:1;margin-bottom:4px">' +
-            '<div class="lk-group-vars" style="font-size:0.8rem;color:#64748b;margin-bottom:6px">เลือกตัวแปรก่อน แล้วกดจัดกลุ่ม</div>';
+        div.className = 'lk-group-box';
+        div.setAttribute('data-group-idx', idx);
+        div.style.cssText = 'border:1px solid #c7d2fe;border-radius:8px;padding:10px;margin-bottom:10px;background:#f8fafc';
+
+        var html = '<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">';
+        html += '<input type="text" class="form-input lk-group-name" value="' + groupName + '" placeholder="ชื่อด้าน" style="flex:1;font-weight:600;font-size:0.9rem">';
+        html += '<button class="btn btn-export" type="button" onclick="removeLikertGroup(' + idx + ')" style="padding:4px 8px;color:#dc2626;font-size:0.78rem">ลบ</button>';
+        html += '</div>';
+        html += '<div style="font-size:0.78rem;color:#64748b;margin-bottom:6px">คลิกตัวแปรเพื่อเพิ่มเข้ากลุ่มนี้:</div>';
+        html += '<div class="lk-group-var-picker" data-gidx="' + idx + '" style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px">';
+        availableVars.forEach(function(v) {
+            html += '<button type="button" class="suggestion-btn-sm lk-var-btn" data-var="' + v + '" data-gidx="' + idx + '" onclick="toggleLikertGroupVar(this)" style="font-size:0.76rem">' + v + '</button>';
+        });
+        html += '</div>';
+        html += '<div class="lk-group-selected" data-gidx="' + idx + '" style="min-height:24px;font-size:0.8rem;color:#059669;font-weight:600">(ยังไม่ได้เลือกตัวแปร)</div>';
+        div.innerHTML = html;
         container.appendChild(div);
+    }
+
+    function toggleLikertGroupVar(btn) {
+        var varName = btn.getAttribute('data-var');
+        var gidx = parseInt(btn.getAttribute('data-gidx'));
+        if (isNaN(gidx) || !likertGroups[gidx]) return;
+
+        var group = likertGroups[gidx];
+        var idx = group.vars.indexOf(varName);
+        if (idx === -1) {
+            // Check if already in another group
+            for (var gi = 0; gi < likertGroups.length; gi++) {
+                if (gi !== gidx && likertGroups[gi].vars.indexOf(varName) !== -1) {
+                    alert(varName + ' อยู่ในกลุ่ม "' + likertGroups[gi].name + '" แล้ว');
+                    return;
+                }
+            }
+            group.vars.push(varName);
+            btn.style.background = '#4f46e5';
+            btn.style.color = '#fff';
+            btn.style.borderColor = '#4f46e5';
+        } else {
+            group.vars.splice(idx, 1);
+            btn.style.background = '';
+            btn.style.color = '';
+            btn.style.borderColor = '';
+        }
+
+        // Update name from input
+        var nameInput = btn.closest('.lk-group-box').querySelector('.lk-group-name');
+        if (nameInput) group.name = nameInput.value.trim() || ('ด้านที่ ' + (gidx + 1));
+
+        // Update selected display
+        var selDiv = document.querySelector('.lk-group-selected[data-gidx="' + gidx + '"]');
+        if (selDiv) {
+            selDiv.innerHTML = group.vars.length > 0
+                ? 'เลือกแล้ว ' + group.vars.length + ' ตัว: ' + group.vars.join(', ')
+                : '(ยังไม่ได้เลือกตัวแปร)';
+        }
+    }
+
+    function removeLikertGroup(idx) {
+        likertGroups.splice(idx, 1);
+        _rebuildLikertGroupUI();
     }
 
     function clearLikertGroups() {
         likertGroups = [];
         var container = document.getElementById('lk-groups-container');
-        if (container) {
-            container.innerHTML = '<div class="lk-group-row" data-group="0"><input type="text" class="form-input lk-group-name" placeholder="ชื่อกลุ่ม/ด้าน เช่น ด้านโครงสร้างองค์กร" style="flex:1;margin-bottom:4px"><div class="lk-group-vars" style="font-size:0.8rem;color:#64748b;margin-bottom:6px">เลือกตัวแปรก่อน แล้วกดจัดกลุ่ม</div></div>';
-        }
+        if (container) container.innerHTML = '';
     }
 
-    function assignLikertGroups() {
-        var vars = getCheckedVars('lk-picker');
-        if (vars.length === 0) { alert('กรุณาเลือกตัวแปรก่อน'); return; }
-
-        var groupRows = document.querySelectorAll('.lk-group-row');
-        var numGroups = groupRows.length;
-        if (numGroups === 0) { addLikertGroup(); groupRows = document.querySelectorAll('.lk-group-row'); numGroups = 1; }
-
-        // Evenly distribute vars to groups
-        var perGroup = Math.ceil(vars.length / numGroups);
+    function _rebuildLikertGroupUI() {
+        var container = document.getElementById('lk-groups-container');
+        if (!container) return;
+        container.innerHTML = '';
+        var savedGroups = likertGroups.slice();
         likertGroups = [];
-        groupRows.forEach(function(row, gi) {
-            var nameInput = row.querySelector('.lk-group-name');
-            var varsDiv = row.querySelector('.lk-group-vars');
-            var start = gi * perGroup;
-            var end = Math.min(start + perGroup, vars.length);
-            var groupVars = vars.slice(start, end);
-            var groupName = nameInput ? nameInput.value.trim() : '';
-            if (!groupName) groupName = 'ด้านที่ ' + (gi + 1);
-            if (nameInput && !nameInput.value.trim()) nameInput.value = groupName;
-            likertGroups.push({ name: groupName, vars: groupVars });
-            if (varsDiv) varsDiv.innerHTML = groupVars.length > 0 ? groupVars.map(function(v){ return '<span style="background:#dbeafe;padding:2px 6px;border-radius:4px;margin:2px;display:inline-block;font-size:0.78rem">' + v + '</span>'; }).join('') : '(ไม่มีตัวแปร)';
+        savedGroups.forEach(function(g) {
+            likertGroups.push(g);
+            var idx = likertGroups.length - 1;
+            var vars = getCheckedVars('lk-picker');
+            var div = document.createElement('div');
+            div.className = 'lk-group-box';
+            div.setAttribute('data-group-idx', idx);
+            div.style.cssText = 'border:1px solid #c7d2fe;border-radius:8px;padding:10px;margin-bottom:10px;background:#f8fafc';
+            var usedByOther = [];
+            likertGroups.forEach(function(g2, gi2) { if (gi2 !== idx) usedByOther = usedByOther.concat(g2.vars); });
+            var availableVars = vars.filter(function(v) { return usedByOther.indexOf(v) === -1; });
+
+            var html = '<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">';
+            html += '<input type="text" class="form-input lk-group-name" value="' + g.name + '" style="flex:1;font-weight:600;font-size:0.9rem">';
+            html += '<button class="btn btn-export" type="button" onclick="removeLikertGroup(' + idx + ')" style="padding:4px 8px;color:#dc2626;font-size:0.78rem">ลบ</button>';
+            html += '</div>';
+            html += '<div class="lk-group-var-picker" data-gidx="' + idx + '" style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px">';
+            availableVars.forEach(function(v) {
+                var isSelected = g.vars.indexOf(v) !== -1;
+                html += '<button type="button" class="suggestion-btn-sm lk-var-btn" data-var="' + v + '" data-gidx="' + idx + '" onclick="toggleLikertGroupVar(this)" style="font-size:0.76rem;' + (isSelected ? 'background:#4f46e5;color:#fff;border-color:#4f46e5' : '') + '">' + v + '</button>';
+            });
+            html += '</div>';
+            html += '<div class="lk-group-selected" data-gidx="' + idx + '" style="min-height:24px;font-size:0.8rem;color:#059669;font-weight:600">';
+            html += g.vars.length > 0 ? 'เลือกแล้ว ' + g.vars.length + ' ตัว: ' + g.vars.join(', ') : '(ยังไม่ได้เลือกตัวแปร)';
+            html += '</div>';
+            div.innerHTML = html;
+            container.appendChild(div);
         });
     }
 
     function _readLikertGroups() {
-        var groupRows = document.querySelectorAll('.lk-group-row');
-        var groups = [];
-        groupRows.forEach(function(row) {
-            var nameInput = row.querySelector('.lk-group-name');
-            var name = nameInput ? nameInput.value.trim() : '';
-            if (name) groups.push({ name: name });
+        // Update names from UI before reading
+        var groupBoxes = document.querySelectorAll('.lk-group-box');
+        groupBoxes.forEach(function(box, i) {
+            var nameInput = box.querySelector('.lk-group-name');
+            if (nameInput && likertGroups[i]) likertGroups[i].name = nameInput.value.trim() || ('ด้านที่ ' + (i + 1));
         });
-        // Match with stored groups
-        if (likertGroups.length > 0 && likertGroups[0].vars && likertGroups[0].vars.length > 0) {
-            // Update names from UI
-            for (var i = 0; i < Math.min(groups.length, likertGroups.length); i++) {
-                if (groups[i].name) likertGroups[i].name = groups[i].name;
-            }
-            return likertGroups;
-        }
-        return [];
+        // Filter out empty groups
+        return likertGroups.filter(function(g) { return g.vars && g.vars.length > 0; });
     }
 
     function runLikert() {
@@ -6033,7 +6108,8 @@
     window.updateLikertCriteria = updateLikertCriteria;
     window.addLikertGroup = addLikertGroup;
     window.clearLikertGroups = clearLikertGroups;
-    window.assignLikertGroups = assignLikertGroups;
+    window.toggleLikertGroupVar = toggleLikertGroupVar;
+    window.removeLikertGroup = removeLikertGroup;
     window.openIntervalConfig = openIntervalConfig;
     window.closeIntervalConfig = closeIntervalConfig;
     window.applyIntervalConfig = applyIntervalConfig;

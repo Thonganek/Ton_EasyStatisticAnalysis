@@ -601,17 +601,12 @@
                 <details class="stat-guide" style="margin:12px 0">
                     <summary>📂 จัดกลุ่มตัวแปร (Group by Dimension / ด้าน)</summary>
                     <div class="stat-guide-content">
-                        <p style="color:#64748b;font-size:0.82rem;margin:0 0 8px">จัดกลุ่มข้อคำถามตามตัวแปร/ด้าน เพื่อแสดงค่าเฉลี่ยรายด้าน เช่น ด้านโครงสร้างองค์กร = ข้อ 1-3, ด้านความรับผิดชอบ = ข้อ 4-6</p>
-                        <div id="lk-groups-container">
-                            <div class="lk-group-row" data-group="0">
-                                <input type="text" class="form-input lk-group-name" placeholder="ชื่อกลุ่ม/ด้าน เช่น ด้านโครงสร้างองค์กร" style="flex:1;margin-bottom:4px">
-                                <div class="lk-group-vars" style="font-size:0.8rem;color:#64748b;margin-bottom:6px">เลือกตัวแปรก่อน แล้วกดจัดกลุ่ม</div>
-                            </div>
-                        </div>
-                        <div style="display:flex;gap:8px;margin-top:8px">
-                            <button class="btn btn-export" type="button" onclick="addLikertGroup()" style="font-size:0.82rem">+ เพิ่มกลุ่ม</button>
-                            <button class="btn btn-primary" type="button" onclick="assignLikertGroups()" style="font-size:0.82rem">📂 จัดกลุ่มอัตโนมัติ</button>
-                            <button class="btn btn-export" type="button" onclick="clearLikertGroups()" style="font-size:0.82rem;color:#dc2626">ล้างกลุ่ม</button>
+                        <p style="color:#64748b;font-size:0.82rem;margin:0 0 10px">จัดกลุ่มข้อคำถามเป็นรายด้าน เพื่อแสดงค่าเฉลี่ยรวมแต่ละด้าน<br>
+                        <strong>วิธีใช้:</strong> 1) กด "เพิ่มกลุ่ม" → 2) ตั้งชื่อด้าน → 3) คลิกเลือกตัวแปรเข้ากลุ่ม → 4) กด Run</p>
+                        <div id="lk-groups-container"></div>
+                        <div style="display:flex;gap:8px;margin-top:10px">
+                            <button class="btn btn-primary" type="button" onclick="addLikertGroup()" style="font-size:0.84rem">+ เพิ่มกลุ่ม/ด้าน</button>
+                            <button class="btn btn-export" type="button" onclick="clearLikertGroups()" style="font-size:0.82rem;color:#dc2626">ล้างกลุ่มทั้งหมด</button>
                         </div>
                     </div>
                 </details>
