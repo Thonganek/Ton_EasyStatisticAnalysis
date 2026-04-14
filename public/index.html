@@ -2980,6 +2980,7 @@
                 <li><strong>Krejcie & Morgan</strong> — ตารางสำเร็จรูป</li>
                 <li><strong>G*Power</strong> — ตาม Effect Size / Power ของสถิติที่ใช้</li>
                 <li><strong>W.G. Cochran (Proportion)</strong> — สำหรับสัดส่วน</li>
+                <li><strong>Cohen (1988) — Multiple Regression</strong> — ใช้ R² จากงานวิจัยเดิม + ตาราง λ ของ Cohen</li>
             </ul>
         </div></details>
     <div class="card">
@@ -2991,6 +2992,7 @@
                 <option value="krejcie">Krejcie & Morgan (ตารางสำเร็จรูป)</option>
                 <option value="gpower">G*Power (ตาม Effect Size)</option>
                 <option value="proportion">Cochran — Proportion (สัดส่วน)</option>
+                <option value="cohen-regression">Cohen (1988) — Multiple Regression (ใช้ R²)</option>
             </select></div>
 
         <div id="ss-yamane-inputs">
@@ -3044,6 +3046,66 @@
                 <div class="form-group"><label>Margin of Error (e)</label><input type="number" id="ss-prop-e" class="form-input" value="0.05" step="0.01"></div>
                 <div class="form-group"><label>Estimated Proportion (p)</label><input type="number" id="ss-prop-p" class="form-input" value="0.50" step="0.01"></div>
                 <div class="form-group"><label>Population (N) — ถ้าทราบ, ไม่ใส่=ไม่จำกัด</label><input type="number" id="ss-prop-pop" class="form-input" value="" placeholder="ไม่ระบุ"></div>
+            </div>
+        </div>
+
+        <div id="ss-cohen-regression-inputs" style="display:none">
+            <div class="detail-box" style="margin-bottom:14px;background:linear-gradient(135deg,#eef2ff,#faf5ff);border-left:4px solid #4f46e5;padding:14px 16px">
+                <strong>📘 Cohen (1988) — Multiple Regression Sample Size</strong><br>
+                <span style="font-size:0.84rem;color:#475569">
+                    สูตร: N = λ(1 − R²<sub>full</sub>) / (R²<sub>full</sub> − R²<sub>reduced</sub>) + w<br>
+                    ใช้ R² จากงานวิจัยเดิม เพื่อคำนวณ N ที่เหมาะสมสำหรับ Multiple Regression<br>
+                    เมื่อ N > ประชากรจริง จะปรับด้วย Finite Population Correction อัตโนมัติ
+                </span>
+            </div>
+
+            <h4 style="margin:0 0 8px;color:#1e40af">Step 1: ใส่ค่า R² จากงานวิจัยเดิม</h4>
+            <div class="form-row">
+                <div class="form-group"><label>R²<sub>full</sub> (Full Model — ตัวแปรทั้งหมด)</label>
+                    <input type="number" id="ss-cr-r2full" class="form-input" value="0.607" step="0.001" min="0.001" max="0.999"></div>
+                <div class="form-group"><label>R²<sub>reduced</sub> (Reduced Model — ไม่มีตัวแปรที่สนใจ)</label>
+                    <input type="number" id="ss-cr-r2reduced" class="form-input" value="0.595" step="0.001" min="0" max="0.999"></div>
+            </div>
+            <div class="detail-box" style="margin-bottom:12px;font-size:0.82rem;color:#475569">
+                <strong>วิธีหาค่า R²:</strong> ดูจากงานวิจัยที่เกี่ยวข้อง (Related Study)<br>
+                — R²<sub>full</sub> = R² ของ Full model (ใส่ตัวแปรอิสระทั้งหมด)<br>
+                — R²<sub>reduced</sub> = R² ของ Reduced model (ใส่เฉพาะตัวแปรควบคุม ไม่มีตัวแปรที่ต้องการทดสอบ)<br>
+                — R²<sub>change</sub> = R²<sub>full</sub> − R²<sub>reduced</sub> (ส่วนที่ตัวแปรที่สนใจอธิบายเพิ่ม)
+            </div>
+
+            <h4 style="margin:12px 0 8px;color:#1e40af">Step 2: กำหนดจำนวนตัวแปร</h4>
+            <div class="form-row">
+                <div class="form-group"><label>u — จำนวนตัวแปรที่ต้องการทดสอบ (Set B)</label>
+                    <input type="number" id="ss-cr-u" class="form-input" value="1" min="1" max="50">
+                    <small style="color:#64748b;font-size:0.78rem">ตัวแปรอิสระที่ต้องการทดสอบว่ามีอิทธิพลหรือไม่</small>
+                </div>
+                <div class="form-group"><label>w — จำนวนตัวแปรควบคุม (Set A)</label>
+                    <input type="number" id="ss-cr-w" class="form-input" value="8" min="0" max="50">
+                    <small style="color:#64748b;font-size:0.78rem">ตัวแปรอิสระอื่นที่ควบคุมไว้ใน model</small>
+                </div>
+            </div>
+
+            <h4 style="margin:12px 0 8px;color:#1e40af">Step 3: Power และ Alpha</h4>
+            <div class="form-row">
+                <div class="form-group"><label>Power (1 − β)</label>
+                    <select id="ss-cr-power" class="form-select">
+                        <option value="0.70">0.70</option>
+                        <option value="0.80" selected>0.80 (แนะนำ)</option>
+                        <option value="0.90">0.90</option>
+                        <option value="0.95">0.95</option>
+                        <option value="0.99">0.99</option>
+                    </select></div>
+                <div class="form-group"><label>Alpha (α)</label>
+                    <select id="ss-cr-alpha" class="form-select">
+                        <option value="0.01">0.01</option>
+                        <option value="0.05" selected>0.05</option>
+                        <option value="0.10">0.10</option>
+                    </select></div>
+            </div>
+
+            <h4 style="margin:12px 0 8px;color:#1e40af">Step 4: จำนวนประชากร (ถ้าทราบ)</h4>
+            <div class="form-group"><label>Population (N) — ใส่เมื่อ N คำนวณได้ > ประชากรจริง เพื่อปรับด้วย Finite Population Correction</label>
+                <input type="number" id="ss-cr-population" class="form-input" value="" placeholder="ไม่ระบุ (ไม่จำกัด)" min="1">
             </div>
         </div>
 
