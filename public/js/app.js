@@ -6123,6 +6123,8 @@
     window.toggleSampleSizeInputs = toggleSampleSizeInputs;
     window.searchRelatedResearch = searchRelatedResearch;
     window.applyResearchR2 = applyResearchR2;
+    window.searchEffectSize = searchEffectSize;
+    window.applyEffectSize = applyEffectSize;
     window.openLambdaTable = openLambdaTable;
     window.closeLambdaTable = closeLambdaTable;
     window.renderLambdaTable = renderLambdaTable;
@@ -6166,11 +6168,10 @@
             '=== ส่วนที่ 1: งานวิจัยที่เกี่ยวข้อง ===\n' +
             'แนะนำ 3-5 งานวิจัยที่ใกล้เคียงที่สุด โดยในแต่ละงานระบุ:\n' +
             '- ชื่อผู้แต่ง (ปี). ชื่อเรื่อง. วารสาร/แหล่งตีพิมพ์\n' +
+            '- ลิงก์ DOI หรือ URL ที่เข้าถึงได้ (เช่น https://doi.org/... หรือ Google Scholar link)\n' +
             '- R² ของ Full Model\n' +
             '- R² Change ของตัวแปรที่เกี่ยวข้อง (ถ้ามี)\n' +
-            '- จำนวนตัวแปรอิสระ\n' +
-            '- ขนาดตัวอย่าง\n' +
-            '- สถิติที่ใช้\n\n' +
+            '- จำนวนตัวแปรอิสระ, ขนาดตัวอย่าง, สถิติที่ใช้\n\n' +
             '=== ส่วนที่ 2: สรุปค่า R² ที่แนะนำสำหรับงานนี้ ===\n' +
             'จากงานวิจัยข้างต้น สรุปค่าที่ควรใช้:\n' +
             '- R²_Y.A,B (Full Model) = ?\n' +
@@ -6180,16 +6181,13 @@
             '- w (จำนวนตัวแปรควบคุม) = ?\n' +
             '- เหตุผลที่แนะนำค่านี้\n\n' +
             '=== ส่วนที่ 3: แหล่งค้นหาเพิ่มเติม ===\n' +
-            'แนะนำฐานข้อมูลและ keyword สำหรับค้นหาเพิ่มเติม:\n' +
-            '- Google Scholar: keyword ที่ควรใช้\n' +
-            '- PubMed: keyword\n' +
-            '- Scopus / Web of Science: keyword\n' +
-            '- ThaiJO / TCI: keyword ภาษาไทย\n' +
-            '- ProQuest / ERIC: keyword (ถ้าเกี่ยวข้อง)\n\n' +
+            'แนะนำฐานข้อมูลพร้อม keyword:\n' +
+            '- Google Scholar, PubMed, Scopus, ThaiJO/TCI, ERIC, ProQuest\n\n' +
             '=== ส่วนที่ 4: ข้อควรระวัง ===\n' +
             '- ข้อจำกัดของการใช้ R² จากงานวิจัยอื่น\n' +
-            '- แนะนำวิธีรายงานในวิทยานิพนธ์/งานวิจัย\n\n' +
-            'ตอบเป็นภาษาไทย ชัดเจน พร้อมใช้งาน ให้ค่าตัวเลข R² ที่เจาะจง';
+            '- แนะนำวิธีรายงานในวิทยานิพนธ์\n\n' +
+            'สำคัญมาก: ในแต่ละงานวิจัยที่อ้างอิง ให้ใส่ลิงก์ URL หรือ DOI ทุกเรื่อง เพื่อให้ผู้ใช้เข้าถึงได้\n' +
+            'ตอบเป็นภาษาไทย ชัดเจน ให้ค่าตัวเลข R² ที่เจาะจง';
 
         try {
             var response = await fetch('/api/ai/chat', {
@@ -6244,9 +6242,14 @@
                     html += '</div>';
                 }
 
-                // Main AI response
+                // Main AI response — auto-link URLs
+                var displayReply = escapeHtml(reply).replace(/\n/g,'<br>');
+                // Convert URLs to clickable links
+                displayReply = displayReply.replace(/(https?:\/\/[^\s<,)]+)/g, '<a href="$1" target="_blank" rel="noopener" style="color:#2563eb;text-decoration:underline">$1</a>');
+                // Convert DOI to links
+                displayReply = displayReply.replace(/DOI:\s*(10\.\d{4,}\/[^\s<,)]+)/gi, 'DOI: <a href="https://doi.org/$1" target="_blank" rel="noopener" style="color:#2563eb;text-decoration:underline">$1</a>');
                 html += '<h4 style="margin:0 0 10px;color:#1e40af">📚 ผลการค้นหางานวิจัยที่เกี่ยวข้อง</h4>';
-                html += '<div style="white-space:pre-wrap;line-height:1.8;font-size:0.84rem">' + reply.replace(/\n/g,'<br>') + '</div>';
+                html += '<div style="white-space:pre-wrap;line-height:1.8;font-size:0.84rem">' + displayReply + '</div>';
 
                 // Quick search links
                 var searchKeyword = encodeURIComponent(topic || (ivText + ' ' + dvText));
@@ -6286,6 +6289,108 @@
         // Scroll to the form
         var formEl = document.getElementById('ss-cr-r2full');
         if (formEl) formEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    // =========================================================================
+    // AI Search Effect Size — for G*Power
+    // =========================================================================
+    async function searchEffectSize() {
+        var queryEl = document.getElementById('ss-gp-research-query');
+        var fieldEl = document.getElementById('ss-gp-research-field');
+        var topic = queryEl ? queryEl.value.trim() : '';
+        var field = fieldEl ? fieldEl.value.trim() : '';
+        if (!topic) { alert('กรุณาพิมพ์หัวข้อวิจัย'); return; }
+        if (!state.aiSettings.apiKey) { alert('กรุณาตั้งค่า API Key ใน AI Settings ก่อน'); return; }
+
+        var testType = getSelectValue('ss-gp-test') || 'ttest';
+        var testLabels = {ttest:'Independent t-test (Cohen d)',paired:'Paired t-test (Cohen d)',anova:'One-way ANOVA (Cohen f)',correlation:'Correlation (r)',
+            'chi-square':'Chi-Square (Cohen w)',regression:'Multiple Regression (Cohen f²)'};
+        var esType = {ttest:'d',paired:'d',anova:'f',correlation:'r','chi-square':'w',regression:'f²'};
+        var testLabel = testLabels[testType] || testType;
+        var esLabel = esType[testType] || 'Effect Size';
+
+        var resultDiv = document.getElementById('ss-gp-research-result');
+        if (resultDiv) { resultDiv.innerHTML = '<p class="loading">🔍 กำลังค้นหา Effect Size จากงานวิจัย...</p>'; resultDiv.style.display = ''; }
+
+        var prompt = 'คุณคือผู้เชี่ยวชาญด้านสถิติวิจัยและ Meta-analysis\n\n' +
+            'ผู้ใช้ต้องการค้นหาค่า Effect Size จากงานวิจัยเดิม เพื่อใช้คำนวณขนาดตัวอย่างด้วย G*Power\n\n' +
+            'หัวข้อวิจัย: ' + topic + '\n' +
+            (field ? 'สาขา: ' + field + '\n' : '') +
+            'สถิติที่ใช้: ' + testLabel + '\n' +
+            'ค่า Effect Size ที่ต้องการ: ' + esLabel + '\n\n' +
+            'กรุณาตอบ:\n\n' +
+            '=== งานวิจัยที่เกี่ยวข้อง (3-5 เรื่อง) ===\n' +
+            'แต่ละเรื่องระบุ:\n' +
+            '- ผู้แต่ง (ปี). ชื่อเรื่อง. วารสาร\n' +
+            '- ลิงก์ DOI หรือ URL\n' +
+            '- ค่า Effect Size (' + esLabel + ') ที่พบ\n' +
+            '- ขนาดตัวอย่าง, สถิติที่ใช้\n\n' +
+            '=== สรุปค่า Effect Size ที่แนะนำ ===\n' +
+            '- Effect Size (' + esLabel + ') = ? (ระบุตัวเลข)\n' +
+            '- ระดับ: Small / Medium / Large\n' +
+            '- เหตุผลที่แนะนำค่านี้\n\n' +
+            '=== ลิงก์ค้นหาเพิ่มเติม ===\n' +
+            'แนะนำ keyword สำหรับ Google Scholar, PubMed\n\n' +
+            'สำคัญ: ใส่ลิงก์ URL/DOI ทุกเรื่อง ตอบเป็นภาษาไทย ให้ค่าตัวเลขที่เจาะจง';
+
+        try {
+            var response = await fetch('/api/ai/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    apiKey: state.aiSettings.apiKey, model: state.aiSettings.model,
+                    history: [{ role: 'user', content: prompt }],
+                    context: 'Expert helping find Effect Size (' + esLabel + ') for ' + testLabel + ' power analysis from prior research.'
+                })
+            });
+            if (!response.ok) throw new Error('AI request failed');
+            var json = await response.json();
+            var reply = json.reply || json.result || json.text || '';
+            reply = cleanAIText(reply);
+
+            // Parse effect size from reply
+            var esMatch = reply.match(/Effect\s*Size[^=]*=\s*([\d.]+)/i) || reply.match(new RegExp(esLabel.replace(/[²]/g,'2') + '[^=]*=\\s*([\\d.]+)','i'));
+            var recES = esMatch ? esMatch[1] : null;
+
+            if (resultDiv) {
+                var html2 = '';
+                // Auto-apply panel
+                if (recES) {
+                    html2 += '<div style="background:linear-gradient(135deg,#ecfdf5,#d1fae5);border:2px solid #10b981;border-radius:10px;padding:12px;margin-bottom:12px">';
+                    html2 += '<h4 style="margin:0 0 6px;color:#065f46">🎯 Effect Size ที่แนะนำ</h4>';
+                    html2 += '<table style="font-size:0.88rem"><tr><td style="padding:4px 8px;font-weight:600">' + esLabel + '</td><td style="color:#059669;font-weight:700;font-size:1.1rem">' + recES + '</td></tr></table>';
+                    html2 += '<button class="btn btn-primary" style="margin-top:8px;font-size:0.86rem" onclick="applyEffectSize(' + recES + ')">✅ นำค่า Effect Size ไปใช้</button>';
+                    html2 += '</div>';
+                }
+                // Response with auto-linked URLs
+                var displayReply2 = escapeHtml(reply).replace(/\n/g,'<br>');
+                displayReply2 = displayReply2.replace(/(https?:\/\/[^\s<,)]+)/g, '<a href="$1" target="_blank" rel="noopener" style="color:#2563eb;text-decoration:underline">$1</a>');
+                displayReply2 = displayReply2.replace(/DOI:\s*(10\.\d{4,}\/[^\s<,)]+)/gi, 'DOI: <a href="https://doi.org/$1" target="_blank" rel="noopener" style="color:#2563eb;text-decoration:underline">$1</a>');
+                html2 += '<div style="white-space:pre-wrap;line-height:1.8;font-size:0.84rem">' + displayReply2 + '</div>';
+
+                // Quick links
+                var kw = encodeURIComponent(topic + ' ' + testLabel + ' effect size');
+                html2 += '<div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap">';
+                html2 += '<a href="https://scholar.google.com/scholar?q=' + kw + '" target="_blank" rel="noopener" class="suggestion-btn-sm" style="text-decoration:none">Google Scholar</a>';
+                html2 += '<a href="https://pubmed.ncbi.nlm.nih.gov/?term=' + kw + '" target="_blank" rel="noopener" class="suggestion-btn-sm" style="text-decoration:none">PubMed</a>';
+                html2 += '<a href="https://www.tci-thaijo.org/index.php/search?q=' + encodeURIComponent(topic) + '" target="_blank" rel="noopener" class="suggestion-btn-sm" style="text-decoration:none">ThaiJO</a>';
+                html2 += '</div>';
+                resultDiv.innerHTML = html2;
+            }
+        } catch (err) {
+            if (resultDiv) resultDiv.innerHTML = '<p class="error-text">Error: ' + err.message + '</p>';
+        }
+    }
+
+    function applyEffectSize(es) {
+        var el = document.getElementById('ss-gp-es');
+        if (el) {
+            el.value = es;
+            el.style.transition = 'background 0.3s';
+            el.style.background = '#d1fae5';
+            setTimeout(function() { el.style.background = ''; }, 2000);
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
     }
 
     // =========================================================================
