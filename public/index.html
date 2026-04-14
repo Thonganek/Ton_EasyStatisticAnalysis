@@ -3050,49 +3050,64 @@
         </div>
 
         <div id="ss-cohen-regression-inputs" style="display:none">
-            <div class="detail-box" style="margin-bottom:14px;background:linear-gradient(135deg,#eef2ff,#faf5ff);border-left:4px solid #4f46e5;padding:14px 16px">
-                <strong>📘 Cohen (1988) — Multiple Regression Sample Size</strong><br>
-                <span style="font-size:0.84rem;color:#475569">
-                    สูตร: N = λ(1 − R²<sub>full</sub>) / (R²<sub>full</sub> − R²<sub>reduced</sub>) + w<br>
-                    ใช้ R² จากงานวิจัยเดิม เพื่อคำนวณ N ที่เหมาะสมสำหรับ Multiple Regression<br>
-                    เมื่อ N > ประชากรจริง จะปรับด้วย Finite Population Correction อัตโนมัติ
-                </span>
+            <div class="detail-box" style="margin-bottom:14px;background:linear-gradient(135deg,#eff6ff,#f0fdf4);border-left:4px solid #2563eb;padding:16px 18px">
+                <strong style="font-size:1rem">📘 Cohen (1988) — Multiple Regression Sample Size</strong><br>
+                <div style="font-size:0.88rem;color:#334155;margin-top:8px;line-height:1.7">
+                    <strong>สูตร (1):</strong> N = λ(1 − R²<sub>Y.A,B</sub>) / (R²<sub>Y.A,B</sub> − R²<sub>Y.A</sub>) + w<br>
+                    <strong>สูตร (2) Interpolation:</strong> λ = λ<sub>L</sub> − [(1/v<sub>L</sub> − 1/v) / (1/v<sub>L</sub> − 1/v<sub>U</sub>)] × (λ<sub>L</sub> − λ<sub>U</sub>)<br>
+                    <strong>สูตร FPC:</strong> n = n₀ / (1 + n₀/N) — ใช้เมื่อ N > ประชากรจริง<br><br>
+                    <strong style="color:#dc2626">**** N ไม่ใช่จำนวนประชากร — ต้องคำนวณจากสูตร ****</strong>
+                </div>
             </div>
 
-            <h4 style="margin:0 0 8px;color:#1e40af">Step 1: ใส่ค่า R² จากงานวิจัยเดิม</h4>
-            <div class="form-row">
-                <div class="form-group"><label>R²<sub>full</sub> (Full Model — ตัวแปรทั้งหมด)</label>
-                    <input type="number" id="ss-cr-r2full" class="form-input" value="0.607" step="0.001" min="0.001" max="0.999"></div>
-                <div class="form-group"><label>R²<sub>reduced</sub> (Reduced Model — ไม่มีตัวแปรที่สนใจ)</label>
-                    <input type="number" id="ss-cr-r2reduced" class="form-input" value="0.595" step="0.001" min="0" max="0.999"></div>
+            <!-- AI Search for Related Research -->
+            <div class="card" style="background:linear-gradient(135deg,#fefce8,#fef3c7);border:1px solid #fbbf24;margin-bottom:16px">
+                <h4 style="margin:0 0 10px;color:#92400e">🔍 AI ค้นหางานวิจัยที่เกี่ยวข้อง — หาค่า R² จากงานวิจัยเดิม</h4>
+                <p style="font-size:0.82rem;color:#78716c;margin:0 0 10px">พิมพ์หัวข้อวิจัยหรือตัวแปรที่ศึกษา AI จะค้นหางานวิจัยที่เกี่ยวข้องและแนะนำค่า R² ที่ควรใช้</p>
+                <div class="form-group" style="margin-bottom:8px">
+                    <input type="text" id="ss-cr-research-query" class="form-input" placeholder="เช่น: บรรยากาศองค์กรที่มีอิทธิพลต่อการบริหารจัดการข้อมูล, ปัจจัยที่ส่งผลต่อผลสัมฤทธิ์ทางการเรียน" style="font-size:0.88rem">
+                </div>
+                <button class="btn btn-ai" onclick="searchRelatedResearch()" style="margin-bottom:8px">🤖 AI ค้นหางานวิจัย + แนะนำค่า R²</button>
+                <div id="ss-cr-research-result" style="display:none;background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:12px;font-size:0.84rem;max-height:300px;overflow-y:auto"></div>
             </div>
+
+            <h4 style="margin:0 0 8px;color:#1e40af">ข้อมูลจากงานวิจัยเดิม (Previous Research)</h4>
             <div class="detail-box" style="margin-bottom:12px;font-size:0.82rem;color:#475569">
-                <strong>วิธีหาค่า R²:</strong> ดูจากงานวิจัยที่เกี่ยวข้อง (Related Study)<br>
-                — R²<sub>full</sub> = R² ของ Full model (ใส่ตัวแปรอิสระทั้งหมด)<br>
-                — R²<sub>reduced</sub> = R² ของ Reduced model (ใส่เฉพาะตัวแปรควบคุม ไม่มีตัวแปรที่ต้องการทดสอบ)<br>
-                — R²<sub>change</sub> = R²<sub>full</sub> − R²<sub>reduced</sub> (ส่วนที่ตัวแปรที่สนใจอธิบายเพิ่ม)
+                <strong>R²<sub>Y.A,B</sub></strong> = ค่าสัมประสิทธิ์การตัดสินใจเชิงพหุสำหรับ <strong>Full Model</strong> (ตัวแปรทั้งหมด)<br>
+                <strong>R²<sub>Y.B</sub></strong> = ค่า R² Change — ส่วนที่เปลี่ยนแปลงเมื่อเพิ่มตัวแปรที่สนใจเข้าไป<br>
+                <strong>R²<sub>Y.A</sub></strong> = ค่าสัมประสิทธิ์สำหรับ <strong>Reduced Model</strong> = R²<sub>Y.A,B</sub> − R²<sub>Y.B</sub><br><br>
+                <strong style="color:#dc2626">วิธีหา:</strong> ดูจากตารางวิเคราะห์ถดถอยพหุคูณในงานวิจัยที่ใกล้เคียง<br>
+                เลือกตัวแปรที่ตรงกับที่เราจะศึกษา → ดู R² ของตัวนั้น (สีเขียว) และ R² ตัวก่อนหน้า (สีฟ้า)<br>
+                R² Change = R²ตัวที่สนใจ − R²ตัวก่อนหน้า
+            </div>
+            <div class="form-row">
+                <div class="form-group"><label>R²<sub>Y.A,B</sub> (Full Model)</label>
+                    <input type="number" id="ss-cr-r2full" class="form-input" value="0.607" step="0.001" min="0.001" max="0.999">
+                    <small style="color:#64748b">ค่า R² สุดท้ายของ Full Model จากงานวิจัยเดิม</small></div>
+                <div class="form-group"><label>R²<sub>Y.A</sub> (Reduced Model)</label>
+                    <input type="number" id="ss-cr-r2reduced" class="form-input" value="0.595" step="0.001" min="0" max="0.999">
+                    <small style="color:#64748b">ค่า R² ก่อนใส่ตัวแปรที่สนใจ (R²<sub>full</sub> − R²<sub>change</sub>)</small></div>
             </div>
 
-            <h4 style="margin:12px 0 8px;color:#1e40af">Step 2: กำหนดจำนวนตัวแปร</h4>
+            <h4 style="margin:14px 0 8px;color:#1e40af">กำหนดจำนวนตัวแปร</h4>
             <div class="form-row">
                 <div class="form-group"><label>u — จำนวนตัวแปรที่ต้องการทดสอบ (Set B)</label>
-                    <input type="number" id="ss-cr-u" class="form-input" value="1" min="1" max="50">
-                    <small style="color:#64748b;font-size:0.78rem">ตัวแปรอิสระที่ต้องการทดสอบว่ามีอิทธิพลหรือไม่</small>
-                </div>
-                <div class="form-group"><label>w — จำนวนตัวแปรควบคุม (Set A)</label>
+                    <input type="number" id="ss-cr-u" class="form-input" value="1" min="1" max="20">
+                    <small style="color:#64748b">เลือกค่าของตัวแปรมาใช้คำนวณจากตัวแปรที่สนใจกี่ค่า</small></div>
+                <div class="form-group"><label>w — จำนวนตัวแปรอิสระนอกเหนือจากที่ทดสอบ (Set A)</label>
                     <input type="number" id="ss-cr-w" class="form-input" value="8" min="0" max="50">
-                    <small style="color:#64748b;font-size:0.78rem">ตัวแปรอิสระอื่นที่ควบคุมไว้ใน model</small>
-                </div>
+                    <small style="color:#64748b">ตัวแปรอิสระทั้งหมด − u เช่น มี 9 ตัว ทดสอบ 1 ตัว เหลือ w = 8</small></div>
             </div>
 
-            <h4 style="margin:12px 0 8px;color:#1e40af">Step 3: Power และ Alpha</h4>
+            <h4 style="margin:14px 0 8px;color:#1e40af">Power และ Alpha</h4>
             <div class="form-row">
                 <div class="form-group"><label>Power (1 − β)</label>
                     <select id="ss-cr-power" class="form-select">
-                        <option value="0.70">0.70</option>
-                        <option value="0.80" selected>0.80 (แนะนำ)</option>
-                        <option value="0.90">0.90</option>
-                        <option value="0.95">0.95</option>
+                        <option value="0.25">0.25</option><option value="0.50">0.50</option>
+                        <option value="0.60">0.60</option><option value="0.667">2/3</option>
+                        <option value="0.70">0.70</option><option value="0.75">0.75</option>
+                        <option value="0.80" selected>0.80 (แนะนำ)</option><option value="0.85">0.85</option>
+                        <option value="0.90">0.90</option><option value="0.95">0.95</option>
                         <option value="0.99">0.99</option>
                     </select></div>
                 <div class="form-group"><label>Alpha (α)</label>
@@ -3103,9 +3118,10 @@
                     </select></div>
             </div>
 
-            <h4 style="margin:12px 0 8px;color:#1e40af">Step 4: จำนวนประชากร (ถ้าทราบ)</h4>
-            <div class="form-group"><label>Population (N) — ใส่เมื่อ N คำนวณได้ > ประชากรจริง เพื่อปรับด้วย Finite Population Correction</label>
+            <h4 style="margin:14px 0 8px;color:#1e40af">จำนวนประชากรจริง (ถ้าทราบ — สำหรับ Finite Population Correction)</h4>
+            <div class="form-group"><label>Population — ใส่เมื่อประชากรมีจำนวนน้อยกว่า N ที่คำนวณได้</label>
                 <input type="number" id="ss-cr-population" class="form-input" value="" placeholder="ไม่ระบุ (ไม่จำกัด)" min="1">
+                <small style="color:#64748b">เช่น ประชากร 248 คน แต่ N คำนวณได้ 256 คน → ปรับด้วย FPC</small>
             </div>
         </div>
 

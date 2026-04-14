@@ -5030,8 +5030,9 @@
         } else if (formula === 'cohen-regression') {
             // ================================================================
             // Cohen (1988) — Multiple Regression Sample Size
-            // N = λ(1 − R²_full) / (R²_full − R²_reduced) + w
-            // with iterative refinement of λ via v = N − u − w − 1
+            // สูตร(1): N = λ(1 − R²_Y.A,B) / (R²_Y.A,B − R²_Y.A) + w
+            // สูตร(2): λ = λ_L − [(1/v_L−1/v)/(1/v_L−1/v_U)] × (λ_L − λ_U)
+            // FPC:     n = n₀ / (1 + n₀/N)
             // ================================================================
             var r2Full = parseFloat(document.getElementById('ss-cr-r2full').value);
             var r2Red  = parseFloat(document.getElementById('ss-cr-r2reduced').value);
@@ -5042,216 +5043,236 @@
             var popN = document.getElementById('ss-cr-population').value ? parseFloat(document.getElementById('ss-cr-population').value) : null;
 
             if (isNaN(r2Full) || isNaN(r2Red)) { alert('กรุณาใส่ค่า R² ให้ครบ'); return; }
-            if (r2Full <= r2Red) { alert('R²_full ต้องมากกว่า R²_reduced'); return; }
-            if (r2Full <= 0 || r2Full >= 1) { alert('R²_full ต้องอยู่ระหว่าง 0 ถึง 1'); return; }
+            if (r2Full <= r2Red) { alert('R²_Y.A,B ต้องมากกว่า R²_Y.A'); return; }
+            if (r2Full <= 0 || r2Full >= 1) { alert('R² ต้องอยู่ระหว่าง 0 ถึง 1'); return; }
 
-            var r2Change = r2Full - r2Red;
-            var f2 = r2Change / (1 - r2Full); // Cohen's f² (local)
+            var r2Change = r2Full - r2Red; // R²_Y.B
+            var f2 = r2Change / (1 - r2Full); // Cohen's f²
 
-            // Cohen's λ table lookup using non-central F approximation
-            // λ is obtained from the non-central F distribution
-            // For given u, power, alpha: find λ such that P(F > F_crit | λ) = power
-            // Approximation: λ ≈ (z_alpha + z_beta)² for u=1, else use iterative search
-            function _getCohenLambda(u, vDf, power, alpha) {
-                // F critical value
-                var fCrit = jStat.centralF.inv(1 - alpha, u, vDf);
-                // Search for non-centrality parameter λ
-                // P(F' > fCrit | λ) = power, where F' ~ noncentral F(u, v, λ)
-                // Use bisection on the noncentral F CDF
-                // Approximation using Pearson's method for noncentral F
-                var lo = 0, hi = 200, mid, pwr;
-                for (var iter = 0; iter < 100; iter++) {
-                    mid = (lo + hi) / 2;
-                    pwr = _noncentralFPower(fCrit, u, vDf, mid);
-                    if (Math.abs(pwr - power) < 0.0001) break;
-                    if (pwr < power) lo = mid; else hi = mid;
+            // ---- Cohen λ Table (Table 9.4.2, α=.05) ----
+            // Format: COHEN_TABLE[u][power] = {v: lambda, ...}
+            // v values: 20, 60, 120, Infinity
+            var CT = {};
+            CT[1]={0.25:{20:1.9,60:1.7,120:1.7,999:1.6},0.50:{20:4.1,60:3.9,120:3.8,999:3.8},0.60:{20:5.3,60:4.9,120:4.9,999:4.9},0.667:{20:6.2,60:5.8,120:5.7,999:5.7},0.70:{20:6.7,60:6.2,120:6.2,999:6.2},0.75:{20:7.5,60:7.0,120:6.9,999:6.9},0.80:{20:8.5,60:7.9,120:7.8,999:7.8},0.85:{20:9.7,60:9.1,120:9.0,999:9.0},0.90:{20:11.4,60:10.6,120:10.5,999:10.5},0.95:{20:14.0,60:13.2,120:13.0,999:13.0},0.99:{20:20.1,60:18.7,120:18.4,999:18.4}};
+            CT[2]={0.25:{20:2.6,60:2.3,120:2.3,999:2.2},0.50:{20:5.7,60:5.1,120:5.0,999:5.0},0.60:{20:7.1,60:6.4,120:6.3,999:6.2},0.667:{20:8.2,60:7.4,120:7.2,999:7.2},0.70:{20:8.9,60:8.0,120:7.8,999:7.7},0.75:{20:9.9,60:8.9,120:8.7,999:8.6},0.80:{20:11.1,60:10.0,120:9.7,999:9.6},0.85:{20:12.7,60:11.4,120:11.1,999:11.0},0.90:{20:14.9,60:13.4,120:13.0,999:12.9},0.95:{20:18.4,60:16.4,120:15.9,999:15.8},0.99:{20:24.9,60:22.4,120:21.8,999:21.4}};
+            CT[3]={0.25:{20:3.2,60:2.8,120:2.7,999:2.7},0.50:{20:7.0,60:6.2,120:6.1,999:6.0},0.60:{20:8.8,60:7.8,120:7.6,999:7.5},0.667:{20:10.0,60:8.9,120:8.7,999:8.6},0.70:{20:10.8,60:9.6,120:9.4,999:9.3},0.75:{20:12.0,60:10.7,120:10.4,999:10.3},0.80:{20:13.5,60:12.0,120:11.7,999:11.6},0.85:{20:15.3,60:13.6,120:13.2,999:13.1},0.90:{20:17.8,60:15.8,120:15.4,999:15.2},0.95:{20:21.7,60:19.3,120:18.8,999:18.6},0.99:{20:29.5,60:26.0,120:25.2,999:25.0}};
+            CT[4]={0.25:{20:3.7,60:3.3,120:3.2,999:3.1},0.50:{20:8.2,60:7.2,120:7.0,999:6.9},0.60:{20:10.3,60:9.1,120:8.8,999:8.7},0.667:{20:11.7,60:10.3,120:10.0,999:9.9},0.70:{20:12.6,60:11.1,120:10.8,999:10.7},0.75:{20:14.0,60:12.3,120:12.0,999:11.9},0.80:{20:15.7,60:13.9,120:13.5,999:13.3},0.85:{20:17.7,60:15.6,120:15.2,999:15.0},0.90:{20:20.5,60:18.2,120:17.7,999:17.4},0.95:{20:25.0,60:22.1,120:21.4,999:21.2},0.99:{20:33.6,60:29.4,120:28.5,999:28.2}};
+            CT[5]={0.25:{20:4.2,60:3.7,120:3.6,999:3.5},0.50:{20:9.4,60:8.1,120:7.9,999:7.8},0.60:{20:11.7,60:10.2,120:9.9,999:9.8},0.667:{20:13.3,60:11.6,120:11.3,999:11.1},0.70:{20:14.3,60:12.5,120:12.2,999:12.0},0.75:{20:15.8,60:13.9,120:13.5,999:13.3},0.80:{20:17.8,60:15.6,120:15.2,999:14.9},0.85:{20:20.0,60:17.6,120:17.1,999:16.9},0.90:{20:23.1,60:20.4,120:19.8,999:19.5},0.95:{20:28.1,60:24.7,120:24.0,999:23.7},0.99:{20:37.5,60:32.8,120:31.8,999:31.2}};
+            CT[6]={0.25:{20:4.7,60:4.1,120:4.0,999:3.9},0.50:{20:10.4,60:9.0,120:8.8,999:8.6},0.60:{20:13.0,60:11.3,120:11.0,999:10.8},0.667:{20:14.8,60:12.9,120:12.5,999:12.3},0.70:{20:15.9,60:13.9,120:13.5,999:13.3},0.75:{20:17.6,60:15.4,120:14.9,999:14.7},0.80:{20:19.8,60:17.3,120:16.8,999:16.5},0.85:{20:22.3,60:19.5,120:18.9,999:18.6},0.90:{20:25.6,60:22.5,120:21.8,999:21.4},0.95:{20:31.2,60:27.3,120:26.5,999:26.0},0.99:{20:41.3,60:36.0,120:34.9,999:34.2}};
+            CT[7]={0.25:{20:5.1,60:4.5,120:4.3,999:4.3},0.50:{20:11.5,60:9.9,120:9.6,999:9.4},0.60:{20:14.3,60:12.4,120:12.0,999:11.8},0.667:{20:16.2,60:14.1,120:13.7,999:13.5},0.70:{20:17.5,60:15.2,120:14.8,999:14.5},0.75:{20:19.3,60:16.9,120:16.4,999:16.1},0.80:{20:21.7,60:19.0,120:18.4,999:18.1},0.85:{20:24.4,60:21.4,120:20.7,999:20.4},0.90:{20:28.1,60:24.6,120:23.9,999:23.4},0.95:{20:34.1,60:29.9,120:28.9,999:28.4},0.99:{20:45.1,60:39.3,120:38.0,999:37.2}};
+            CT[8]={0.25:{20:5.6,60:4.9,120:4.7,999:4.6},0.50:{20:12.5,60:10.8,120:10.4,999:10.3},0.60:{20:15.5,60:13.4,120:13.0,999:12.8},0.667:{20:17.6,60:15.3,120:14.8,999:14.6},0.70:{20:19.0,60:16.5,120:16.0,999:15.7},0.75:{20:21.0,60:18.3,120:17.8,999:17.5},0.80:{20:23.6,60:20.6,120:19.9,999:19.6},0.85:{20:26.6,60:23.2,120:22.5,999:22.1},0.90:{20:30.5,60:26.7,120:25.9,999:25.4},0.95:{20:37.0,60:32.4,120:31.3,999:30.8},0.99:{20:48.8,60:42.5,120:41.0,999:40.2}};
+
+            // Lookup λ from Cohen table with interpolation formula (2)
+            function _cohenLambdaLookup(uVal, vVal, pwrVal) {
+                var tableU = CT[uVal];
+                if (!tableU) {
+                    // Use noncentral F approximation for u not in table
+                    var fCrit = jStat.centralF.inv(1 - alpha, uVal, Math.max(vVal,2));
+                    var lo=0,hi=300,mid2;
+                    for(var it=0;it<100;it++){mid2=(lo+hi)/2;var adjF=fCrit/(1+mid2/Math.max(vVal,2));var pwr2=1-jStat.centralF.cdf(adjF,uVal,Math.max(vVal,2));if(Math.abs(pwr2-pwrVal)<0.0001)break;if(pwr2<pwrVal)lo=mid2;else hi=mid2;}
+                    return mid2;
                 }
-                return mid;
+                var pwrData = tableU[pwrVal];
+                if (!pwrData) {
+                    // Find closest power
+                    var pwrs = Object.keys(tableU).map(Number).sort(function(a,b){return a-b;});
+                    var pLo = pwrs[0], pHi = pwrs[pwrs.length-1];
+                    for (var pi=0;pi<pwrs.length-1;pi++) { if (pwrs[pi] <= pwrVal && pwrs[pi+1] >= pwrVal) { pLo=pwrs[pi]; pHi=pwrs[pi+1]; break; } }
+                    if (pLo === pHi) return _cohenLambdaFromTable(tableU[pLo], vVal);
+                    var lLo = _cohenLambdaFromTable(tableU[pLo], vVal);
+                    var lHi = _cohenLambdaFromTable(tableU[pHi], vVal);
+                    return lLo + (pwrVal - pLo) / (pHi - pLo) * (lHi - lLo);
+                }
+                return _cohenLambdaFromTable(pwrData, vVal);
             }
 
-            // Approximate power from noncentral F
-            // Uses shifted central F approximation: F' ≈ F / (1 + δ/df2)
-            function _noncentralFPower(fCrit, df1, df2, lambda) {
-                var adjF = fCrit / (1 + lambda / df2);
-                return 1 - jStat.centralF.cdf(adjF, df1, df2);
+            // Interpolation formula (2) from Cohen for v between table values
+            function _cohenLambdaFromTable(vLambdaMap, vTarget) {
+                var vKeys = Object.keys(vLambdaMap).map(Number).sort(function(a,b){return a-b;});
+                // Find v_L (lower) and v_U (upper)
+                if (vTarget >= vKeys[vKeys.length-1]) return vLambdaMap[vKeys[vKeys.length-1]];
+                if (vTarget <= vKeys[0]) return vLambdaMap[vKeys[0]];
+                var vL = vKeys[0], vU = vKeys[vKeys.length-1];
+                for (var vi=0; vi<vKeys.length-1; vi++) {
+                    if (vKeys[vi] <= vTarget && vKeys[vi+1] >= vTarget) {
+                        vL = vKeys[vi]; vU = vKeys[vi+1]; break;
+                    }
+                }
+                var lambdaL = vLambdaMap[vL];
+                var lambdaU = vLambdaMap[vU];
+                if (vL === vU) return lambdaL;
+                // สูตร(2): λ = λ_L − [(1/v_L − 1/v) / (1/v_L − 1/v_U)] × (λ_L − λ_U)
+                var invVL = 1/vL, invV = 1/vTarget, invVU = (vU >= 999) ? 0 : 1/vU;
+                var ratio = (invVL - invV) / (invVL - invVU);
+                return lambdaL - ratio * (lambdaL - lambdaU);
             }
 
-            // --- Iterative calculation ---
-            var stepRows = [];
+            // ==== STEP 1: คำนวณ N (ครั้งแรก) — กำหนด w=0, v=120 ====
+            var v0 = 120;
+            var lambda0 = _cohenLambdaLookup(u, v0, power);
+            var N0 = lambda0 * (1 - r2Full) / r2Change;
+            // ตามสูตร: N = λ(1−R²_Y.A,B) / (R²_Y.A,B − R²_Y.A) + w (ใน Step 1 กำหนด w=0)
 
-            // Step 1: Initial v estimate
-            var vInit = 120; // starting guess
-            var lambda1 = _getCohenLambda(u, vInit, power, alpha);
+            // ==== STEP 2: คำนวณ v ====
+            // v = N − u − w − 1  (ตอนนี้ w = จำนวนตัวแปรอิสระจริง − u)
+            var v1 = N0 - u - w - 1;
 
-            stepRows.push({
-                'Step': 1,
-                'Action': 'Initial λ lookup',
-                'v (df residual)': vInit,
-                'λ (lambda)': fmt(lambda1),
-                'คำอธิบาย': 'กำหนด v เริ่มต้น = 120, เปิดตาราง Cohen ได้ λ = ' + fmt(lambda1)
-            });
+            // ==== STEP 3: Interpolate λ ด้วยสูตร (2) ====
+            var lambda1 = _cohenLambdaLookup(u, Math.max(v1, 2), power);
 
-            // Step 2: Calculate N (first iteration)
-            var N1 = lambda1 * (1 - r2Full) / r2Change + u + w + 1;
-            var N1ceil = Math.ceil(N1);
+            // ==== STEP 4: คำนวณ N อีกครั้งด้วย λ ใหม่ ====
+            var N1 = lambda1 * (1 - r2Full) / r2Change + w;
+            var Nfinal = Math.ceil(N1);
 
-            stepRows.push({
-                'Step': 2,
-                'Action': 'คำนวณ N (รอบที่ 1)',
-                'v (df residual)': vInit,
-                'λ (lambda)': fmt(lambda1),
-                'N (คำนวณ)': fmt(N1, 3),
-                'N (ปัดขึ้น)': N1ceil,
-                'สูตร': 'N = λ(1−R²full)/(R²full−R²reduced) + u + w + 1',
-                'คำอธิบาย': 'N = ' + fmt(lambda1) + '×(1−' + r2Full + ')/(' + r2Full + '−' + r2Red + ') + ' + u + ' + ' + w + ' + 1 = ' + fmt(N1, 3)
-            });
-
-            // Step 3: Recalculate v
-            var v2 = N1ceil - u - w - 1;
-
-            stepRows.push({
-                'Step': 3,
-                'Action': 'คำนวณ v ใหม่',
-                'v (df residual)': fmt(v2, 1),
-                'คำอธิบาย': 'v = N − u − w − 1 = ' + N1ceil + ' − ' + u + ' − ' + w + ' − 1 = ' + fmt(v2, 1)
-            });
-
-            // Step 4: Refine λ with new v
-            var lambda2 = _getCohenLambda(u, Math.max(v2, 2), power, alpha);
-
-            stepRows.push({
-                'Step': 4,
-                'Action': 'Refine λ ด้วย v ใหม่',
-                'v (df residual)': fmt(v2, 1),
-                'λ (lambda)': fmt(lambda2),
-                'คำอธิบาย': 'ใช้ v = ' + fmt(v2, 1) + ' เปิดตาราง Cohen ได้ λ = ' + fmt(lambda2)
-            });
-
-            // Step 5: Recalculate N with refined λ
-            var N2 = lambda2 * (1 - r2Full) / r2Change + u + w + 1;
+            // Check if need another iteration
+            var v2 = Nfinal - u - w - 1;
+            var lambda2 = _cohenLambdaLookup(u, Math.max(v2, 2), power);
+            var N2 = lambda2 * (1 - r2Full) / r2Change + w;
             var N2ceil = Math.ceil(N2);
-            var lambdaChanged = Math.abs(lambda2 - lambda1) > 0.05;
+            var converged = Math.abs(N2ceil - Nfinal) <= 1;
+            if (!converged) Nfinal = N2ceil;
 
-            stepRows.push({
-                'Step': 5,
-                'Action': lambdaChanged ? 'คำนวณ N ใหม่ (λ เปลี่ยน)' : 'ยืนยัน N (λ ไม่เปลี่ยน)',
-                'v (df residual)': fmt(v2, 1),
-                'λ (lambda)': fmt(lambda2),
-                'N (คำนวณ)': fmt(N2, 3),
-                'N (ปัดขึ้น)': N2ceil,
-                'คำอธิบาย': lambdaChanged
-                    ? 'λ เปลี่ยนจาก ' + fmt(lambda1) + ' เป็น ' + fmt(lambda2) + ' → N ใหม่ = ' + N2ceil
-                    : 'λ ไม่เปลี่ยน (' + fmt(lambda1) + ' ≈ ' + fmt(lambda2) + ') → ยืนยัน N = ' + N2ceil
-            });
-
-            // If λ changed significantly, do one more iteration
-            var Nfinal = N2ceil;
-            if (lambdaChanged) {
-                var v3 = Nfinal - u - w - 1;
-                var lambda3 = _getCohenLambda(u, Math.max(v3, 2), power, alpha);
-                var N3 = lambda3 * (1 - r2Full) / r2Change + u + w + 1;
-                Nfinal = Math.ceil(N3);
-                stepRows.push({
-                    'Step': 6,
-                    'Action': 'Iteration รอบที่ 3 (Final)',
-                    'v (df residual)': fmt(v3, 1),
-                    'λ (lambda)': fmt(lambda3),
-                    'N (ปัดขึ้น)': Nfinal,
-                    'คำอธิบาย': 'N สุดท้าย = ' + Nfinal
-                });
-            }
-
-            // Finite Population Correction
+            // ==== STEP พิเศษ: Finite Population Correction ====
             var NfinalAdj = Nfinal;
             var usedFPC = false;
             if (popN && popN > 0 && Nfinal > popN) {
-                NfinalAdj = Math.ceil(Nfinal / (1 + (Nfinal - 1) / popN));
+                NfinalAdj = Math.ceil(Nfinal / (1 + Nfinal / popN));
                 usedFPC = true;
-                stepRows.push({
-                    'Step': lambdaChanged ? 7 : 6,
-                    'Action': 'Finite Population Correction',
-                    'N (ก่อนปรับ)': Nfinal,
-                    'Population': popN,
-                    'N (หลังปรับ)': NfinalAdj,
-                    'สูตร': 'n = n₀ / (1 + (n₀−1)/N)',
-                    'คำอธิบาย': 'N คำนวณ (' + Nfinal + ') > ประชากรจริง (' + popN + ') → ปรับเป็น ' + NfinalAdj + ' คน'
-                });
             }
 
-            // --- Build output ---
-            // 1. Parameter Summary
-            extras.push({title:'Step 1: Parameters / ค่าที่ใช้ในการคำนวณ', data:[{
-                'R²_full (Full Model)': r2Full,
-                'R²_reduced (Reduced Model)': r2Red,
-                'R²_change': fmt(r2Change, 4),
-                "Cohen's f² (local)": fmt(f2, 4),
-                'Effect Size': f2 < 0.02 ? 'Very Small' : (f2 < 0.15 ? 'Small' : (f2 < 0.35 ? 'Medium' : 'Large')),
-                'u (ตัวแปรทดสอบ)': u,
-                'w (ตัวแปรควบคุม)': w,
-                'Total IVs (u+w)': u + w,
-                'Power': power,
-                'Alpha (α)': alpha
+            // ========== BUILD OUTPUT ==========
+            // 1. ค่าที่ใช้
+            extras.push({title:'ข้อมูลจากงานวิจัยเดิม (Previous Research)', data:[{
+                'R²_Y.A,B (Full Model)': r2Full,
+                'R²_Y.A (Reduced Model)': r2Red,
+                'R²_Y.B (R² Change)': fmt(r2Change, 4),
+                'คำอธิบาย R²_Y.B': 'ส่วนที่ตัวแปร Set B อธิบายเพิ่ม = ' + r2Full + ' − ' + r2Red + ' = ' + fmt(r2Change, 4)
             }]});
 
-            // 2. Step-by-step calculation
-            extras.push({title:'Step 2-5: ขั้นตอนการคำนวณ (Iterative)', data: stepRows});
+            extras.push({title:'ตัวแปรและเกณฑ์', data:[{
+                'u (ตัวแปรทดสอบ / Set B)': u,
+                'w (ตัวแปรควบคุม / Set A)': w,
+                'Total IVs (u+w)': u + w,
+                'Power': power,
+                'Alpha (α)': alpha,
+                "Cohen's f² = R²change/(1−R²full)": fmt(f2, 4),
+                'Effect Size': f2 < 0.02 ? 'Very Small' : (f2 < 0.15 ? 'Small' : (f2 < 0.35 ? 'Medium' : 'Large'))
+            }]});
 
-            // 3. Final Result
+            // 2. Step 1
+            extras.push({title:'Step 1: คำนวณ N (ครั้งแรก) — กำหนด w = 0, v = 120', data:[{
+                'สูตร': 'N = λ(1 − R²_Y.A,B) / (R²_Y.A,B − R²_Y.A) + w',
+                'v (ตั้งต้น)': v0,
+                'u': u,
+                'w (ตั้งค่า)': '0 (กำหนดในขั้นตอนนี้)',
+                'Power': power,
+                'λ (จากตาราง Cohen)': fmt(lambda0, 2) + ' (u=' + u + ', v=' + v0 + ', Power=' + power + ')',
+                'การแทนค่า': 'N = ' + fmt(lambda0,2) + ' x (1−' + r2Full + ') / (' + r2Full + '−' + r2Red + ') + 0',
+                'ขั้นตอน 1': fmt(lambda0,2) + ' x ' + fmt(1-r2Full,3) + ' / ' + fmt(r2Change,4),
+                'ขั้นตอน 2': fmt(lambda0*(1-r2Full),4) + ' / ' + fmt(r2Change,4),
+                'N (คำนวณ)': fmt(N0, 3),
+                'คำอธิบาย': 'ได้ N ฟรุ้งฟริ้ง = ' + fmt(N0,3) + ' (ยังไม่ใช่ N สุดท้าย!)'
+            }]});
+
+            // 3. Step 2
+            extras.push({title:'Step 2: คำนวณ v — แทนค่า w จริง', data:[{
+                'สูตร': 'v = N − u − w − 1',
+                'N (จาก Step 1)': fmt(N0, 3),
+                'u': u,
+                'w (จำนวนจริง)': w + ' (ตัวแปรอิสระทั้งหมด − u = ' + (u+w) + ' − ' + u + ')',
+                'การแทนค่า': 'v = ' + fmt(N0,3) + ' − ' + u + ' − ' + w + ' − 1',
+                'v (V มุ้งมิ้ง)': fmt(v1, 3),
+                'คำอธิบาย': 'ใช้ v นี้ไป Interpolate หาค่า λ ใหม่ใน Step 3'
+            }]});
+
+            // 4. Step 3 — Interpolation
+            // Find vL, vU for display
+            var vKeys = [20,60,120,999];
+            var dispVL = 120, dispVU = 999;
+            for (var vvi=0;vvi<vKeys.length-1;vvi++) { if (vKeys[vvi]<=v1&&vKeys[vvi+1]>=v1) { dispVL=vKeys[vvi]; dispVU=vKeys[vvi+1]; break; } }
+            if (v1 >= 999) { dispVL=999; dispVU=999; }
+            var dispLambdaL = CT[u] && CT[u][power] ? (CT[u][power][dispVL]||'N/A') : 'N/A';
+            var dispLambdaU = CT[u] && CT[u][power] ? (CT[u][power][dispVU]||'N/A') : 'N/A';
+
+            extras.push({title:'Step 3: Interpolate λ ด้วยสูตร (2)', data:[{
+                'สูตร': 'λ = λ_L − [(1/v_L − 1/v)/(1/v_L − 1/v_U)] × (λ_L − λ_U)',
+                'v (V มุ้งมิ้ง)': fmt(v1, 2),
+                'v_L (lower จากตาราง)': dispVL,
+                'v_U (upper จากตาราง)': dispVU === 999 ? '∞ (Infinity)' : dispVU,
+                'λ_L (λ-lower)': dispLambdaL,
+                'λ_U (λ-upper)': dispLambdaU,
+                'λ (คำนวณ Interpolation)': fmt(lambda1, 2),
+                'คำอธิบาย': dispLambdaL === dispLambdaU ? 'λ_L = λ_U ดังนั้น (λ_L − λ_U) = 0 → λ = ' + fmt(lambda1,2) : 'Interpolate ระหว่าง v=' + dispVL + ' และ v=' + (dispVU===999?'∞':dispVU)
+            }]});
+
+            // 5. Step 4
+            extras.push({title:'Step 4: คำนวณ N ใหม่ด้วย λ จาก Step 3', data:[{
+                'สูตร': 'N = λ(1 − R²_Y.A,B) / (R²_Y.A,B − R²_Y.A) + w',
+                'λ': fmt(lambda1, 2),
+                'w': w,
+                'การแทนค่า': 'N = ' + fmt(lambda1,2) + ' x (1−' + r2Full + ') / (' + r2Full + '−' + r2Red + ') + ' + w,
+                'ขั้นตอน': fmt(lambda1*(1-r2Full),4) + ' / ' + fmt(r2Change,4) + ' + ' + w,
+                'N (คำนวณ)': fmt(N1, 3),
+                'N (ปัดขึ้น)': Math.ceil(N1),
+                'λ เปลี่ยนจาก Step 1?': Math.abs(lambda1-lambda0)<0.05 ? 'ไม่เปลี่ยน (λ เท่าเดิม → N เท่าเดิม)' : 'เปลี่ยน → ต้องคำนวณ N ใหม่',
+                'คำอธิบาย': 'ได้ขนาดตัวอย่าง = ' + fmt(N1,3) + ' ≈ ' + Nfinal + ' คน'
+            }]});
+
+            // 6. Step พิเศษ: FPC
+            if (usedFPC) {
+                extras.push({title:'Step พิเศษ: Finite Population Correction (FPC)', data:[{
+                    'สาเหตุ': 'N คำนวณ (' + Nfinal + ') > ประชากรจริง (' + popN + ')',
+                    'สูตร': 'n = n₀ / (1 + n₀/N)',
+                    'n₀ (N คำนวณ)': Nfinal,
+                    'N (ประชากร)': popN,
+                    'การแทนค่า': 'n = ' + Nfinal + ' / (1 + ' + Nfinal + '/' + popN + ')',
+                    'n (ขนาดตัวอย่างปรับแก้)': NfinalAdj,
+                    'คำอธิบาย': 'ปรับลดจาก ' + Nfinal + ' เป็น ' + NfinalAdj + ' คน เพราะประชากรมีจำนวนจำกัด'
+                }]});
+            }
+
+            // 7. Final Result Summary
             var finalData = {
                 'สูตร': 'Cohen (1988) — Multiple Regression',
-                'R²_full': r2Full,
-                'R²_reduced': r2Red,
-                'R²_change': fmt(r2Change, 4),
-                "f²": fmt(f2, 4),
-                'u': u,
-                'w': w,
-                'Power': power,
-                'Alpha': alpha,
-                'λ (Final)': fmt(lambdaChanged ? (lambda3 || lambda2) : lambda2),
-                'N (คำนวณ)': Nfinal
+                'R²_Y.A,B': r2Full, 'R²_Y.A': r2Red, 'R²_Y.B (Change)': fmt(r2Change,4),
+                "f²": fmt(f2,4), 'u':u, 'w':w, 'Power':power, 'Alpha':alpha,
+                'λ (Final)': fmt(lambda1,2),
+                'N (คำนวณจากสูตร)': Nfinal
             };
-            if (usedFPC) {
-                finalData['Population'] = popN;
-                finalData['N (หลัง FPC)'] = NfinalAdj;
-                finalData['ขนาดตัวอย่างที่ใช้จริง'] = NfinalAdj;
-            } else {
-                finalData['ขนาดตัวอย่างที่ใช้จริง'] = Nfinal;
-            }
+            if (usedFPC) { finalData['N (หลัง FPC)'] = NfinalAdj; finalData['ประชากร'] = popN; }
+            finalData['ขนาดตัวอย่างที่ใช้จริง'] = usedFPC ? NfinalAdj + ' คน' : Nfinal + ' คน';
             result = finalData;
-            extras.push({title:'ผลสรุป: ขนาดตัวอย่างที่ต้องการ', data:[finalData]});
+            extras.push({title:'ผลสรุป: ขนาดตัวอย่าง', data:[finalData]});
 
-            // 4. Interpretation Guide
-            var interpRows = [];
-            interpRows.push({'หัวข้อ':'R² Change', 'ค่า': fmt(r2Change, 4), 'แปลผล': 'ตัวแปร Set B (' + u + ' ตัว) อธิบายตัวแปรตามเพิ่มจาก Reduced model ได้ ' + fmt(r2Change*100,2) + '%'});
-            interpRows.push({'หัวข้อ':"Cohen's f²", 'ค่า': fmt(f2, 4), 'แปลผล': f2 < 0.02 ? 'ขนาดอิทธิพลเล็กมาก (< 0.02) — ต้องการ N มาก' : (f2 < 0.15 ? 'ขนาดอิทธิพลเล็ก (0.02-0.15)' : (f2 < 0.35 ? 'ขนาดอิทธิพลปานกลาง (0.15-0.35)' : 'ขนาดอิทธิพลใหญ่ (> 0.35) — ต้องการ N น้อย'))});
-            interpRows.push({'หัวข้อ':'Power', 'ค่า': power, 'แปลผล': 'โอกาสที่จะพบ Effect ได้ถ้ามีจริง = ' + (power*100) + '%'});
-            interpRows.push({'หัวข้อ':'N สุดท้าย', 'ค่า': usedFPC ? NfinalAdj : Nfinal, 'แปลผล': usedFPC ? 'ใช้ ' + NfinalAdj + ' คน (ปรับจาก ' + Nfinal + ' เพราะประชากร = ' + popN + ')' : 'ต้องเก็บข้อมูลอย่างน้อย ' + Nfinal + ' คน'});
-            extras.push({title:'การแปลผลและคำแนะนำ', data: interpRows});
-
-            // 5. Cohen's f² reference table
-            extras.push({title:"ตารางอ้างอิง: Cohen's f² Effect Size", data:[
-                {"Effect Size":"Very Small","f²":"< 0.02","ตัวอย่าง":"ตัวแปรมีอิทธิพลน้อยมาก ต้องการ N มากเพื่อตรวจจับ"},
-                {"Effect Size":"Small","f²":"0.02 – 0.15","ตัวอย่าง":"อิทธิพลเล็ก เช่น ปัจจัยเสริมที่มีผลเล็กน้อย"},
-                {"Effect Size":"Medium","f²":"0.15 – 0.35","ตัวอย่าง":"อิทธิพลปานกลาง เช่น ปัจจัยหลักในงานวิจัยทั่วไป"},
-                {"Effect Size":"Large","f²":"> 0.35","ตัวอย่าง":"อิทธิพลใหญ่ ชัดเจน ต้องการ N น้อย"}
+            // 8. Interpretation
+            extras.push({title:'การแปลผล', data:[
+                {'หัวข้อ':'R² Change','ค่า':fmt(r2Change,4),'แปลผล':'ตัวแปร Set B ('+u+' ตัว) อธิบายเพิ่มได้ '+fmt(r2Change*100,2)+'%'},
+                {'หัวข้อ':"f²",'ค่า':fmt(f2,4),'แปลผล':f2<0.02?'Very Small (<0.02) — ต้องการ N มาก':(f2<0.15?'Small (0.02-0.15)':(f2<0.35?'Medium (0.15-0.35)':'Large (>0.35) — ต้องการ N น้อย'))},
+                {'หัวข้อ':'N สุดท้าย','ค่า':usedFPC?NfinalAdj:Nfinal,'แปลผล':usedFPC?'ปรับจาก '+Nfinal+' เป็น '+NfinalAdj+' คน (FPC)':'เก็บข้อมูลอย่างน้อย '+Nfinal+' คน'},
+                {'หัวข้อ':'Tabachnick Rule','ค่า':50+8*(u+w),'แปลผล':'N >= 50+8m = '+(50+8*(u+w))+' → ใช้ค่าที่มากกว่า = '+Math.max(50+8*(u+w),usedFPC?NfinalAdj:Nfinal)+' คน'}
             ]});
 
-            // 6. Warnings / Tips
-            var tips = [];
-            if (r2Change < 0.01) tips.push({'⚠️ จุดสังเกต':'R² Change ต่ำมาก (' + fmt(r2Change,4) + ')','คำแนะนำ':'ต้องการ N มาก ตรวจสอบว่าตัวแปรที่ทดสอบมี Theoretical support หรือไม่'});
-            if (f2 < 0.02) tips.push({'⚠️ จุดสังเกต':'f² ต่ำมาก — อาจต้องการ N หลายร้อยถึงหลายพัน','คำแนะนำ':'พิจารณาเพิ่ม Power หรือยอมรับ Effect Size ที่ใหญ่ขึ้น'});
-            if (usedFPC) tips.push({'⚠️ จุดสังเกต':'ใช้ Finite Population Correction','คำแนะนำ':'N คำนวณ (' + Nfinal + ') > ประชากร (' + popN + ') จึงปรับลดเป็น ' + NfinalAdj + ' — Power จริงอาจสูงกว่าที่กำหนด'});
-            if (Nfinal < 50) tips.push({'⚠️ จุดสังเกต':'N น้อยกว่า 50','คำแนะนำ':'Multiple Regression ควรมีอย่างน้อย 50 + 8m (m=จำนวน IV) ตาม Tabachnick & Fidell — คำนวณได้ ' + (50 + 8*(u+w)) + ' คน'});
-            var tabRule = 50 + 8 * (u + w);
-            tips.push({'⚠️ จุดสังเกต':'เปรียบเทียบกับ Rule of Thumb','คำแนะนำ':'Tabachnick & Fidell (2013): N >= 50 + 8m = ' + tabRule + ' คน | Cohen (1988): ' + (usedFPC ? NfinalAdj : Nfinal) + ' คน → ใช้ค่าที่มากกว่า = ' + Math.max(tabRule, usedFPC ? NfinalAdj : Nfinal) + ' คน'});
-            tips.push({'⚠️ จุดสังเกต':'N ที่คำนวณ ≠ จำนวนประชากร','คำแนะนำ':'N คือจำนวนกลุ่มตัวอย่างขั้นต่ำ ไม่ใช่จำนวนประชากร — ต้องเก็บข้อมูลให้ได้อย่างน้อยเท่านี้'});
-            extras.push({title:'⚠️ จุดสังเกตและคำแนะนำ', data: tips});
+            // 9. Cohen f² reference
+            extras.push({title:"ตาราง Cohen's f² Effect Size",data:[
+                {"Size":"Very Small","f²":"< 0.02","คำอธิบาย":"อิทธิพลน้อยมาก ต้องการ N มาก"},
+                {"Size":"Small","f²":"0.02 – 0.15","คำอธิบาย":"อิทธิพลเล็ก"},
+                {"Size":"Medium","f²":"0.15 – 0.35","คำอธิบาย":"อิทธิพลปานกลาง"},
+                {"Size":"Large","f²":"> 0.35","คำอธิบาย":"อิทธิพลใหญ่ ต้องการ N น้อย"}
+            ]});
 
-            // 7. Reference
-            extras.push({title:'📚 การอ้างอิง (Reference)', data:[
-                {'แหล่งอ้างอิง':'Cohen, J. (1988). Statistical Power Analysis for the Behavioral Sciences (2nd ed.). Lawrence Erlbaum Associates.'},
-                {'แหล่งอ้างอิง':'Tabachnick, B. G., & Fidell, L. S. (2013). Using Multivariate Statistics (6th ed.). Pearson.'},
-                {'แหล่งอ้างอิง':'Green, S. B. (1991). How many subjects does it take to do a regression analysis? Multivariate Behavioral Research, 26(3), 499-510.'}
+            // 10. Tips
+            var tips = [];
+            tips.push({'จุดสังเกต':'N ที่คำนวณ ≠ จำนวนประชากร','คำแนะนำ':'N คือจำนวนกลุ่มตัวอย่างขั้นต่ำ ไม่ใช่จำนวนประชากร'});
+            if (r2Change < 0.01) tips.push({'จุดสังเกต':'R² Change ต่ำมาก','คำแนะนำ':'ต้องการ N มาก ตรวจสอบ Theoretical support'});
+            if (usedFPC) tips.push({'จุดสังเกต':'ใช้ FPC','คำแนะนำ':'N('+Nfinal+') > ประชากร('+popN+') → ปรับเป็น '+NfinalAdj});
+            tips.push({'จุดสังเกต':'Rule of Thumb','คำแนะนำ':'Tabachnick: N >= '+(50+8*(u+w))+' | Cohen: '+(usedFPC?NfinalAdj:Nfinal)+' → ใช้ '+Math.max(50+8*(u+w),usedFPC?NfinalAdj:Nfinal)+' คน'});
+            extras.push({title:'⚠️ จุดสังเกตและคำแนะนำ', data:tips});
+
+            // 11. Reference
+            extras.push({title:'📚 อ้างอิง',data:[
+                {'Reference':'Cohen, J. (1988). Statistical Power Analysis for the Behavioral Sciences (2nd ed.). Lawrence Erlbaum.'},
+                {'Reference':'Tabachnick, B. G., & Fidell, L. S. (2013). Using Multivariate Statistics (6th ed.). Pearson.'},
+                {'Reference':'Cochran, W. G. (1963). Sampling Techniques (2nd ed.). John Wiley and Sons.'}
             ]});
         }
 
@@ -5811,10 +5832,60 @@
     window.sendFollowup = sendFollowup;
     window.sendFollowupFromInput = sendFollowupFromInput;
     window.toggleSampleSizeInputs = toggleSampleSizeInputs;
+    window.searchRelatedResearch = searchRelatedResearch;
 
     // =========================================================================
     // Sample Size Calculator — toggle inputs based on formula
     // =========================================================================
+    // =========================================================================
+    // AI Search Related Research — for Cohen (1988) R² lookup
+    // =========================================================================
+    async function searchRelatedResearch() {
+        var query = document.getElementById('ss-cr-research-query');
+        if (!query || !query.value.trim()) { alert('กรุณาพิมพ์หัวข้อวิจัยหรือตัวแปรที่ต้องการค้นหา'); return; }
+        if (!state.aiSettings.apiKey) { alert('กรุณาตั้งค่า API Key ใน AI Settings ก่อน'); return; }
+
+        var resultDiv = document.getElementById('ss-cr-research-result');
+        if (resultDiv) {
+            resultDiv.innerHTML = '<p class="loading">🔍 กำลังค้นหางานวิจัยที่เกี่ยวข้อง...</p>';
+            resultDiv.style.display = '';
+        }
+
+        var prompt = 'คุณคือผู้เชี่ยวชาญด้านสถิติวิจัย กรุณาค้นหาและแนะนำงานวิจัยที่เกี่ยวข้องกับหัวข้อ:\n\n' +
+            '"' + query.value.trim() + '"\n\n' +
+            'กรุณาตอบในรูปแบบนี้:\n' +
+            '1. แนะนำงานวิจัยที่เกี่ยวข้อง 3-5 เรื่อง (ชื่อผู้แต่ง, ปี, ชื่อเรื่อง)\n' +
+            '2. ระบุค่า R² ที่พบในงานวิจัยเหล่านั้น (R² full model, R² change ของตัวแปรที่เกี่ยวข้อง)\n' +
+            '3. แนะนำค่า R²_Y.A,B (Full Model) และ R²_Y.A (Reduced Model) ที่ควรใช้ในการคำนวณขนาดตัวอย่างตาม Cohen (1988)\n' +
+            '4. ระบุจำนวนตัวแปรอิสระ (u และ w) ที่แนะนำ\n' +
+            '5. แนะนำฐานข้อมูลที่ควรค้นหาเพิ่มเติม เช่น Google Scholar, PubMed, ThaiJO, TCI, Scopus, Web of Science\n' +
+            'ตอบเป็นภาษาไทย กระชับ พร้อมใช้งาน';
+
+        try {
+            var response = await fetch('/api/ai/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    apiKey: state.aiSettings.apiKey,
+                    model: state.aiSettings.model,
+                    history: [{ role: 'user', content: prompt }],
+                    context: 'ผู้ใช้ต้องการหาค่า R² จากงานวิจัยเดิมเพื่อใช้คำนวณขนาดตัวอย่างด้วยสูตร Cohen (1988) Multiple Regression'
+                })
+            });
+            if (!response.ok) throw new Error('AI request failed');
+            var json = await response.json();
+            var reply = json.reply || json.result || json.text || 'ไม่พบผลลัพธ์';
+            reply = cleanAIText(reply);
+            if (resultDiv) {
+                resultDiv.innerHTML = '<h4 style="margin:0 0 8px;color:#1e40af">🤖 ผลการค้นหางานวิจัยที่เกี่ยวข้อง</h4>' +
+                    '<div style="white-space:pre-wrap;line-height:1.7">' + reply.replace(/\n/g,'<br>') + '</div>' +
+                    '<p style="margin:10px 0 0;font-size:0.78rem;color:#64748b">💡 นำค่า R² ที่แนะนำไปกรอกในช่องด้านล่าง แล้วกดคำนวณ</p>';
+            }
+        } catch (err) {
+            if (resultDiv) resultDiv.innerHTML = '<p class="error-text">Error: ' + err.message + '</p>';
+        }
+    }
+
     function toggleSampleSizeInputs() {
         var formula = getSelectValue('ss-formula') || 'yamane';
         var sections = ['yamane','cochran','krejcie','gpower','proportion','cohen-regression'];
