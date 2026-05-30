@@ -1082,7 +1082,7 @@
                 case 'homogeneity': runHomogeneity(); break;
                 case 'manova': runManova(); break;
                 case 'games-howell': runGamesHowell(); break;
-                case 'multiple-regression': runLinearRegression(); break;
+                case 'multiple-regression': runMultipleRegression(); break;
                 case 'kappa': runKappa(); break;
                 case 'cfa': runCFA(); break;
                 case 'item-analysis': runItemAnalysis(); break;
@@ -6420,22 +6420,22 @@
         var gNames = Object.keys(groups);
         if (gNames.length < 3) { alert('ต้องมีอย่างน้อย 3 กลุ่ม'); return; }
 
-        var results = [];
-        for (var i=0;i<gNames.length;i++){
-            for (var j=i+1;j<gNames.length;j++){
-                var g1=groups[gNames[i]],g2=groups[gNames[j]];
-                var m1=jStat.mean(g1),m2=jStat.mean(g2);
-                var v1=jStat.variance(g1,true),v2=jStat.variance(g2,true);
-                var n1=g1.length,n2=g2.length;
-                var se=Math.sqrt(v1/n1+v2/n2);
-                var t=(m1-m2)/se;
-                var df_num=Math.pow(v1/n1+v2/n2,2);
-                var df_den=Math.pow(v1/n1,2)/(n1-1)+Math.pow(v2/n2,2)/(n2-1);
-                var df=df_num/df_den;
-                var p=2*(1-jStat.studentt.cdf(Math.abs(t),df));
-                results.push({'Group (I)':gNames[i],'Group (J)':gNames[j],'Mean Diff (I-J)':fmt(m1-m2),'S.E.':fmt(se),'t':fmt(t),'df':fmt(df),'Sig.':fmt(p),'Result':p<0.05?'Sig.':'Not Sig.'});
-            }
-        }
+        var groupData = gNames.map(function(name) { return groups[name]; });
+        var ghPairs = Stats.gamesHowell(groupData, gNames);
+        if (!ghPairs || ghPairs.length === 0) { alert('Unable to calculate Games-Howell test.'); return; }
+
+        var results = ghPairs.map(function(pair) {
+            return {
+                'Group (I)': pair.groupA,
+                'Group (J)': pair.groupB,
+                'Mean Diff (I-J)': fmt(pair.meanDiff),
+                'S.E.': fmt(pair.se),
+                'q': fmt(pair.q),
+                'df': fmt(pair.df),
+                'Sig.': fmt(pair.pAdjusted),
+                'Result': pair.significant ? 'Sig.' : 'Not Sig.'
+            };
+        });
         state.results['gh'] = {data:results, title:'Games-Howell Post-hoc: '+dvName+' by '+ivName, extras:[]};
         displayResults('gh');
     }
