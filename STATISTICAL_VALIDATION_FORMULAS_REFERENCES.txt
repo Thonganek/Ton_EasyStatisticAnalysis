@@ -1,0 +1,824 @@
+EASY STATISTIC ANALYSIS TOOLS
+รายงานตรวจสอบความถูกต้องของหัวข้อสถิติ สูตรที่ใช้ และแหล่งอ้างอิง
+วันที่ตรวจสอบ: 30 พฤษภาคม 2026
+ขอบเขตไฟล์ที่ตรวจสอบ: public/index.html, public/js/app.js, public/js/stats.js
+
+หมายเหตุสำคัญ
+1. รายงานนี้ตรวจสอบจากโค้ดจริงของแอปใน repository ไม่ใช่ผลการทดสอบเทียบตัวเลขกับ SPSS/R/Python ทุกกรณี
+2. ค่า p-value หลายส่วนคำนวณผ่าน jStat และบางหัวข้อใช้สูตรประมาณค่า จึงควรใช้คำว่า "ประมาณ" ในรายงานวิจัยเมื่อระบุไว้ในสถานะ
+3. การ validate ทางสถิติในที่นี้หมายถึงสูตรและขั้นตอนสอดคล้องกับตำรามาตรฐานในระดับใช้งานทั่วไป ไม่ใช่การรับรองสำหรับงานกำกับดูแล/งานคลินิก/งานที่ต้อง audit เชิงกฎหมาย
+4. การจัดการข้อมูล missing values มีทั้งแบบ clean รายตัวแปร, pairwise deletion และ listwise deletion ขึ้นกับหัวข้อ ดังนั้นควรระบุ N ที่ใช้จริงในผลลัพธ์เสมอ
+
+คำอธิบายสถานะ
+PASS     = สูตรหลักตรงกับวิธีมาตรฐานและเหมาะกับการใช้งานทั่วไป
+APPROX   = มีการประมาณค่า เช่น p-value, distribution, หรือ sample size แบบ simplified
+PARTIAL  = ทำได้เฉพาะบางกรณีหรือยังขาด diagnostics/ตัวเลือกขั้นสูง
+UI       = เป็นหน้าจอช่วยใช้งาน/แสดงผล ไม่มีสูตร inferential โดยตรง
+TODO     = ยังเป็น placeholder หรือยังไม่ได้คำนวณสถิติจริงในแอป
+
+======================================================================
+1) DATA IMPORT, HOME, AI, TEMPLATE, CHART SUPPORT
+======================================================================
+
+1.1 Home / Upload / Data Preview
+สถานะ: UI
+ตรวจสอบ: เป็นส่วนอัปโหลด Excel/CSV, preview ข้อมูล และเลือกตัวแปรให้หัวข้อวิเคราะห์
+สูตรที่ใช้: ไม่มีสูตรสถิติโดยตรง
+ข้อควรระวัง: ความถูกต้องของผลสถิติขึ้นกับการ parse ตัวเลข, missing values, และชนิดตัวแปรในไฟล์นำเข้า
+
+1.2 Charts & Graphs
+สถานะ: UI / PASS สำหรับการ visualize
+ตรวจสอบ: ใช้ Chart.js เพื่อสร้างกราฟจากตัวแปรที่เลือก
+สูตรที่ใช้: ไม่มีการทดสอบสมมติฐานโดยตรง, เป็นการแสดงข้อมูล
+ข้อควรระวัง: กราฟไม่ใช่หลักฐานนัยสำคัญทางสถิติ ต้องอ่านร่วมกับผลทดสอบ
+
+1.3 AI Statistical Chat / AI Settings
+สถานะ: UI
+ตรวจสอบ: เป็นส่วนตั้งค่าและเรียก AI เพื่อช่วยอธิบายผล
+สูตรที่ใช้: ไม่มีสูตรสถิติโดยตรง
+ข้อควรระวัง: คำตอบ AI ควรตรวจซ้ำกับตารางผลลัพธ์และบริบทงานวิจัย
+
+1.4 Sample Templates
+สถานะ: UI
+ตรวจสอบ: เป็นไฟล์ตัวอย่างสำหรับผู้ใช้ดาวน์โหลด
+สูตรที่ใช้: ไม่มีสูตรสถิติโดยตรง
+
+======================================================================
+2) DESCRIPTIVE, SCALE, NORMALITY, ASSUMPTION CHECKS
+======================================================================
+
+2.1 Demographics
+สถานะ: PASS
+ตรวจสอบ: สำหรับตัวแปรกลุ่ม แสดง n และ percent; สำหรับตัวแปร numeric แสดง mean และ SD
+สูตรที่ใช้:
+- Percent = (n_category / N_total) x 100
+- Mean = sum(x_i) / n
+- Sample SD = sqrt(sum((x_i - xbar)^2) / (n - 1))
+ข้อควรระวัง: Percent ใช้ฐาน N ที่โค้ดกำหนดตามชุดข้อมูล/ตัวแปรที่เลือก จึงควรตรวจ missing values ก่อนรายงาน
+
+2.2 Descriptive Statistics
+สถานะ: PASS
+ตรวจสอบ: คำนวณ n, mean, SE, SD, variance, min, max, range, median, mode, skewness, kurtosis, percentile, 95% CI
+สูตรที่ใช้:
+- Mean = sum(x_i) / n
+- Sample variance s^2 = sum((x_i - xbar)^2) / (n - 1)
+- SD = sqrt(s^2)
+- SE = SD / sqrt(n)
+- Range = max - min
+- 95% CI mean = xbar +/- t_(0.975, n-1) x SE
+- Percentile ใช้ linear interpolation ที่ตำแหน่ง p/100 x (n - 1)
+- Sample skewness ใช้ adjusted sample skewness
+- Excess kurtosis ใช้ adjusted sample kurtosis
+ข้อควรระวัง: Skewness ต้อง n >= 3 และ kurtosis ต้อง n >= 4
+
+2.3 Numeric Data Summary
+สถานะ: PASS
+ตรวจสอบ: เป็นสรุปตัวแปรเชิงปริมาณ โดยดึงผลจาก descriptive statistics
+สูตรที่ใช้: ใช้สูตรเดียวกับ Descriptive Statistics
+
+2.4 Nominal Data Summary
+สถานะ: PASS
+ตรวจสอบ: ตารางความถี่และร้อยละของตัวแปร categorical
+สูตรที่ใช้:
+- Frequency = count(category)
+- Percent = count(category) / valid N x 100
+ข้อควรระวัง: ค่าตัวอักษรที่ต่างกันแม้เพียงช่องว่างอาจถูกนับเป็นคนละกลุ่มถ้าไม่ได้ trim/clean ก่อน
+
+2.5 Likert Scale
+สถานะ: PASS
+ตรวจสอบ: คำนวณ count ระดับ 5,4,3,2,1, mean, SD, ranking, interpretation และ export Word ตามลำดับคอลัมน์ ลำดับ, ตัวแปร, 5, 4, 3, 2, 1, Mean, SD, การแปลผล
+สูตรที่ใช้:
+- Count_k = จำนวนคำตอบที่เท่ากับระดับ k
+- Mean = sum(score_i) / n
+- SD = sqrt(sum((score_i - mean)^2) / (n - 1))
+- Interpretation = เทียบค่า mean กับเกณฑ์ช่วงคะแนนที่ผู้ใช้กำหนด
+ข้อควรระวัง: Likert เป็นข้อมูล ordinal; การใช้ mean/SD เป็นแนวปฏิบัติที่พบได้บ่อย แต่ควรรายงานเกณฑ์แปลผลให้ชัดเจน
+
+2.6 Interval Data Summary
+สถานะ: PASS
+ตรวจสอบ: สรุปตัวแปรช่วง/อันตรภาคด้วยสถิติเชิงพรรณนา
+สูตรที่ใช้: ใช้สูตร mean, SD, SE, CI, min, max, percentile เช่นเดียวกับ descriptive statistics
+
+2.7 Outlier Detection
+สถานะ: PASS
+ตรวจสอบ: ตรวจ outlier จาก z-score และ/หรือช่วง IQR ตามผลในหน้า outlier
+สูตรที่ใช้:
+- z_i = (x_i - xbar) / SD
+- IQR = Q3 - Q1
+- Lower fence = Q1 - 1.5 x IQR
+- Upper fence = Q3 + 1.5 x IQR
+ข้อควรระวัง: z-score เหมาะกับข้อมูลใกล้ normal; IQR robust กว่าในข้อมูลเบ้
+
+2.8 Normality Test
+สถานะ: APPROX
+ตรวจสอบ: ใช้ Shapiro-Wilk สำหรับ n <= 50 ด้วย expected normal order statistics แบบ Blom และ p-value ตาม Royston approximation; ถ้า n > 50 fallback ไป KS test และรายงาน W = 1 - D
+สูตรที่ใช้:
+- Shapiro-Wilk W = (sum(a_i x_(i)))^2 / sum((x_i - xbar)^2)
+- Blom expected normal score: m_i = Phi^-1((i - 0.375) / (n + 0.25))
+- KS D = max |F_n(x) - Phi((x - xbar)/s)|
+ข้อควรระวัง:
+- สำหรับ n > 50 ผลที่ label เป็น Shapiro-Wilk ในโค้ดกลายเป็น fallback จาก KS จึงควรระบุว่าเป็น approximation
+- KS กับ mean/SD ที่ประมาณจาก sample ไม่ใช่ Lilliefors exact correction
+
+2.9 Q-Q Plot
+สถานะ: PASS
+ตรวจสอบ: สร้างจุด Q-Q จาก quantile ปกติเทียบกับข้อมูลมาตรฐาน
+สูตรที่ใช้:
+- p_i = (i + 0.5) / n
+- theoretical_i = Phi^-1(p_i)
+- observed standardized_i = (x_(i) - xbar) / SD
+ข้อควรระวัง: เป็นเครื่องมือวินิจฉัยด้วยสายตา ไม่ใช่ p-value
+
+2.10 Assumption Normality
+สถานะ: APPROX
+ตรวจสอบ: เรียก normality check ต่อกลุ่ม/ตัวแปรจากฟังก์ชัน normality
+สูตรที่ใช้: ใช้สูตร Shapiro-Wilk/KS ตามข้อ 2.8
+
+2.11 Assumption Levene / Homogeneity of Variance
+สถานะ: PASS แต่มีรายละเอียดต่างกันตามหน้า
+ตรวจสอบ:
+- helper Levene ใน stats.js ใช้ absolute deviation จาก median แล้วทำ one-way ANOVA บน deviation
+- หน้า Homogeneity ใช้ absolute deviation จาก mean แล้วทำ ANOVA บน deviation
+สูตรที่ใช้:
+- z_ij = |x_ij - center_j|
+- F = MS_between(z) / MS_within(z)
+ข้อควรระวัง: Brown-Forsythe ใช้ median; Levene แบบดั้งเดิมใช้ mean ทั้งสองแบบใช้ได้ แต่ควรระบุ center ที่ใช้
+
+2.12 Assumption VIF / Multicollinearity
+สถานะ: PASS
+ตรวจสอบ: คำนวณ VIF และ Tolerance จากการ regress ตัวแปรอิสระแต่ละตัวบนตัวแปรอิสระอื่น
+สูตรที่ใช้:
+- R_j^2 = R-square จาก model X_j ~ X_others
+- Tolerance_j = 1 - R_j^2
+- VIF_j = 1 / (1 - R_j^2)
+ข้อควรระวัง: VIF สูงสะท้อน collinearity แต่ไม่ได้พิสูจน์ causal problem โดยตรง
+
+2.13 Z-Score
+สถานะ: PASS
+ตรวจสอบ: แปลงตัวแปร numeric เป็นคะแนนมาตรฐาน
+สูตรที่ใช้:
+- z_i = (x_i - xbar) / SD
+
+2.14 Missing Data Analysis
+สถานะ: PASS สำหรับ descriptive missingness
+ตรวจสอบ: นับจำนวน missing ต่อ variables และ overall missing percent
+สูตรที่ใช้:
+- Missing % = missing_count / total_cells x 100
+ข้อควรระวัง: เป็นการสรุป missing เท่านั้น ยังไม่ได้ทำ imputation หรือทดสอบ MCAR
+
+======================================================================
+3) PARAMETRIC TESTS AND ANOVA FAMILY
+======================================================================
+
+3.1 One-Sample t-test
+สถานะ: PASS
+ตรวจสอบ: ทดสอบ mean ของตัวแปรเทียบกับค่าคงที่
+สูตรที่ใช้:
+- t = (xbar - mu0) / (s / sqrt(n))
+- df = n - 1
+- 95% CI = xbar +/- t_(1-alpha/2, df) x SE
+- Cohen's d = (xbar - mu0) / s
+ข้อควรระวัง: สมมติ normality ของข้อมูลหรือใช้กับ n มากพอ
+
+3.2 Independent Samples t-test
+สถานะ: PASS
+ตรวจสอบ: คำนวณ pooled t-test, Welch t-test, Levene, Cohen's d, CI
+สูตรที่ใช้:
+- pooled variance sp^2 = ((n1-1)s1^2 + (n2-1)s2^2) / (n1+n2-2)
+- t_pooled = (xbar1 - xbar2) / (sp x sqrt(1/n1 + 1/n2))
+- df = n1 + n2 - 2
+- t_Welch = (xbar1 - xbar2) / sqrt(s1^2/n1 + s2^2/n2)
+- df_Welch = (s1^2/n1 + s2^2/n2)^2 / ((s1^2/n1)^2/(n1-1) + (s2^2/n2)^2/(n2-1))
+- Cohen's d = (xbar1 - xbar2) / sp
+ข้อควรระวัง: ถ้า variance ไม่เท่ากันควรรายงาน Welch มากกว่า pooled t
+
+3.3 Paired Samples t-test
+สถานะ: PASS
+ตรวจสอบ: ใช้ difference รายคู่และทดสอบ mean difference
+สูตรที่ใช้:
+- d_i = after_i - before_i
+- t = dbar / (SD_d / sqrt(n))
+- df = n - 1
+- Cohen's dz = dbar / SD_d
+- r before-after ใช้ Pearson correlation
+ข้อควรระวัง: ต้องจับคู่ข้อมูลถูกแถว และ normality ของ difference สำคัญกว่าของตัวแปรเดี่ยว
+
+3.4 One-way ANOVA
+สถานะ: PASS
+ตรวจสอบ: คำนวณ SSB, SSW, F, p, eta squared, Levene และ posthoc Bonferroni เมื่อ significant
+สูตรที่ใช้:
+- SSB = sum(n_j (xbar_j - xbar_grand)^2)
+- SSW = sum(sum((x_ij - xbar_j)^2))
+- MSB = SSB / (k - 1)
+- MSW = SSW / (N - k)
+- F = MSB / MSW
+- eta^2 = SSB / SST
+ข้อควรระวัง: Posthoc default ใน onewayAnova เป็น pairwise t-test ปรับ Bonferroni ไม่ใช่ Tukey HSD เสมอไป
+
+3.5 Two-way ANOVA
+สถานะ: PARTIAL
+ตรวจสอบ: ทำผ่าน dummy-coded OLS และเปรียบเทียบ residual SS ของ model ที่มี/ไม่มี Factor A, Factor B, Interaction
+สูตรที่ใช้:
+- y = b0 + A_dummies + B_dummies + A*B + e
+- SS_effect = SSE_reduced - SSE_full
+- F_effect = (SS_effect / df_effect) / MSE_full
+ข้อควรระวัง: เป็น sequential/partial model comparison ตาม dummy coding ไม่ได้รองรับ Type II/Type III ANOVA แบบเต็มทุกกรณี
+
+3.6 Repeated Measures ANOVA
+สถานะ: PARTIAL
+ตรวจสอบ: คำนวณ within-subject repeated measures ANOVA แบบพื้นฐาน
+สูตรที่ใช้:
+- SS_total = sum((x_ij - grand_mean)^2)
+- SS_subject = k x sum((subject_mean_i - grand_mean)^2)
+- SS_condition = n x sum((condition_mean_j - grand_mean)^2)
+- SS_error = SS_total - SS_subject - SS_condition
+- F = MS_condition / MS_error
+ข้อควรระวัง: ยังไม่คำนวณ sphericity test หรือ Greenhouse-Geisser/Huynh-Feldt correction
+
+3.7 ANCOVA
+สถานะ: PARTIAL
+ตรวจสอบ: ใช้ linear regression ที่มี covariate และ dummy-coded group เพื่อปรับค่า covariate
+สูตรที่ใช้:
+- y = b0 + b1*covariate + group_dummies + e
+- F/group effect มาจากการเปรียบเทียบ model/ANOVA ของ regression
+ข้อควรระวัง: ควรตรวจ homogeneity of regression slopes เอง หากงานวิจัยต้องรายงาน ANCOVA แบบเข้มงวด
+
+3.8 MANOVA
+สถานะ: APPROX / PARTIAL
+ตรวจสอบ: โค้ดรัน univariate ANOVA แยกแต่ละ DV และคำนวณ Wilks' Lambda แบบ product ของ SSW/(SSW+SSB)
+สูตรที่ใช้:
+- Lambda_approx = product_dv [SSW_dv / (SSW_dv + SSB_dv)]
+ข้อควรระวัง: ไม่ได้สร้าง H และ E matrix เต็ม ไม่ได้คำนวณ Pillai, Hotelling-Lawley, Roy หรือ F approximation แบบ MANOVA มาตรฐาน
+
+3.9 Welch ANOVA
+สถานะ: PASS
+ตรวจสอบ: ใช้ weighted means จาก variance ต่อกลุ่มและ Welch-Satterthwaite df
+สูตรที่ใช้:
+- w_i = n_i / s_i^2
+- xbar_w = sum(w_i xbar_i) / sum(w_i)
+- F_Welch = [sum(w_i (xbar_i - xbar_w)^2)/(k-1)] / [1 + 2(k-2)/(k^2-1) x sum((1 - w_i/W)^2/(n_i-1))]
+- df1 = k - 1
+- df2 = (k^2 - 1) / [3 x sum((1 - w_i/W)^2/(n_i-1))]
+ข้อควรระวัง: เหมาะเมื่อ variance ไม่เท่ากัน
+
+3.10 Post-hoc Tests
+สถานะ: PASS / APPROX ตาม method
+ตรวจสอบ: รองรับ Tukey HSD, Bonferroni, Scheffe, LSD, Games-Howell, Dunnett บางส่วนตามโค้ด
+สูตรที่ใช้โดยรวม:
+- Bonferroni: p_adj = min(p_raw x m, 1)
+- LSD: LSD = t_crit x sqrt(MSW x (1/n_i + 1/n_j))
+- Scheffe: ใช้ F statistic สำหรับ contrast และ critical จาก F distribution
+- Games-Howell: q = |xbar_i - xbar_j| / sqrt((s_i^2/n_i + s_j^2/n_j)/2), df แบบ Welch-Satterthwaite
+- Dunnett ในโค้ด: t = (xbar_i - xbar_control) / sqrt(MSW(1/n_i + 1/n_c)), p ปรับแบบ Bonferroni approximation
+ข้อควรระวัง:
+- Games-Howell fallback เป็น Bonferroni Welch t ถ้า jStat ไม่มี studentized range
+- Dunnett ใช้ Bonferroni approximation ไม่ใช่ multivariate t distribution ของ Dunnett จริง
+
+======================================================================
+4) NONPARAMETRIC TESTS
+======================================================================
+
+4.1 Mann-Whitney U
+สถานะ: PASS / APPROX สำหรับ p-value
+ตรวจสอบ: rank รวมสองกลุ่ม, คำนวณ U, Z พร้อม tie correction และ effect size r
+สูตรที่ใช้:
+- U1 = n1 n2 + n1(n1+1)/2 - R1
+- U2 = n1 n2 + n2(n2+1)/2 - R2
+- U = min(U1, U2)
+- Z = (U - n1 n2/2) / sigma_U
+- r = |Z| / sqrt(N)
+ข้อควรระวัง: p-value เป็น normal approximation ไม่ใช่ exact U ใน sample เล็ก
+
+4.2 Wilcoxon Signed-Rank
+สถานะ: PASS / APPROX สำหรับ p-value
+ตรวจสอบ: rank absolute nonzero differences, คำนวณ W, Z และ r
+สูตรที่ใช้:
+- diff_i = after_i - before_i, ตัด diff = 0
+- W = min(sum ranks positive, sum ranks negative)
+- mu_W = n(n+1)/4
+- sigma_W = sqrt(n(n+1)(2n+1)/24 - tie_correction/48)
+- r = |Z| / sqrt(n)
+ข้อควรระวัง: p-value เป็น normal approximation
+
+4.3 Kruskal-Wallis
+สถานะ: PASS / APPROX สำหรับ p-value/posthoc
+ตรวจสอบ: rank รวมทุกกลุ่ม, H พร้อม tie correction, etaH และ posthoc Mann-Whitney Bonferroni
+สูตรที่ใช้:
+- H = 12/(N(N+1)) x sum(R_j^2/n_j) - 3(N+1)
+- H_corrected = H / [1 - sum(t^3 - t)/(N^3 - N)]
+- df = k - 1
+- eta_H = (H - df) / (N - df - 1)
+ข้อควรระวัง: posthoc ใช้ pairwise Mann-Whitney approximation
+
+4.4 Friedman Test
+สถานะ: PASS / APPROX สำหรับ p-value/posthoc
+ตรวจสอบ: rank ภายใน subject, chi-square, Kendall's W และ posthoc Wilcoxon Bonferroni
+สูตรที่ใช้:
+- chi2_F = 12/(n k(k+1)) x sum(R_j^2) - 3n(k+1)
+- Kendall's W = chi2_F / [n(k-1)]
+ข้อควรระวัง: p-value ใช้ chi-square approximation; sample เล็กอาจควรใช้ exact/permutation
+
+4.5 Median Test
+สถานะ: PASS
+ตรวจสอบ: หา grand median แล้วสร้างตาราง above/below x group และทดสอบ chi-square
+สูตรที่ใช้:
+- Grand median = median ของข้อมูลรวม
+- chi2 = sum((O - E)^2 / E), df = k - 1
+ข้อควรระวัง: ค่าเท่ากับ median ถูกนับฝั่ง below ในโค้ด
+
+4.6 Runs Test
+สถานะ: PASS / APPROX
+ตรวจสอบ: แบ่งข้อมูลด้วย median, ตัดค่าที่เท่ากับ median, นับจำนวน runs และใช้ normal approximation
+สูตรที่ใช้:
+- E(R) = 2 n1 n2 / (n1+n2) + 1
+- Var(R) = [2 n1 n2 (2 n1 n2 - n1 - n2)] / [(n1+n2)^2 (n1+n2-1)]
+- Z = (R - E(R)) / sqrt(Var(R))
+ข้อควรระวัง: ต้องมีข้อมูลอย่างน้อย 10 ค่าในโค้ด และเหมาะกับการตรวจ randomness เบื้องต้น
+
+4.7 Two-sample Kolmogorov-Smirnov
+สถานะ: APPROX
+ตรวจสอบ: คำนวณ D จาก ECDF สองกลุ่ม และ p-value แบบ Kolmogorov approximation
+สูตรที่ใช้:
+- D = max_x |F1_n(x) - F2_m(x)|
+- lambda = (sqrt(n1 n2/(n1+n2)) + 0.12 + 0.11/sqrt(n1 n2/(n1+n2))) x D
+- p approx = 2 exp(-2 lambda^2), จำกัดช่วง 0 ถึง 1
+ข้อควรระวัง: เป็น approximation โดยเฉพาะเมื่อมี ties หรือ sample เล็ก
+
+4.8 Sign Test
+สถานะ: PASS
+ตรวจสอบ: นับจำนวน positive/negative differences, ตัด ties, ใช้ two-sided binomial test
+สูตรที่ใช้:
+- n = positive + negative
+- k = min(positive, negative)
+- p = 2 x sum_{i=0..k} C(n,i) 0.5^n, capped ที่ 1
+
+4.9 Binomial Test
+สถานะ: PASS
+ตรวจสอบ: รับตัวแปร binary 0/1, นับ successes และใช้ exact two-sided binomial probability แบบ probability <= observed probability
+สูตรที่ใช้:
+- P(X=i) = C(n,i) p0^i (1-p0)^(n-i)
+- p_two_sided = sum P(X=i) สำหรับ i ที่ P(X=i) <= P(X=observed)
+
+======================================================================
+5) CATEGORICAL DATA, AGREEMENT, ODDS/RISK
+======================================================================
+
+5.1 Chi-square Test of Independence
+สถานะ: PASS
+ตรวจสอบ: สร้าง contingency table, expected frequencies, chi-square, df, p, Cramer's V, Phi
+สูตรที่ใช้:
+- E_ij = row_i_total x col_j_total / N
+- chi2 = sum((O_ij - E_ij)^2 / E_ij)
+- df = (r - 1)(c - 1)
+- Cramer's V = sqrt(chi2 / (N x min(r-1, c-1)))
+- Phi = sqrt(chi2 / N) สำหรับ 2x2
+ข้อควรระวัง: ถ้า expected count ต่ำมาก ควรใช้ Fisher exact สำหรับ 2x2 หรือวิธี exact/Monte Carlo
+
+5.2 Cross Tabulation
+สถานะ: PASS
+ตรวจสอบ: แสดง observed, expected, row %, column %, standardized residual และ chi-square
+สูตรที่ใช้:
+- Row % = O_ij / row_i_total x 100
+- Column % = O_ij / col_j_total x 100
+- Std residual = (O_ij - E_ij) / sqrt(E_ij)
+- chi-square, Cramer's V, Phi ตามข้อ 5.1
+
+5.3 Fisher's Exact Test
+สถานะ: PASS
+ตรวจสอบ: ใช้ hypergeometric probability สำหรับตาราง 2x2 และ two-tailed p โดยรวมความน่าจะเป็นที่ <= observed
+สูตรที่ใช้:
+- P(a) = [(a+b)!(c+d)!(a+c)!(b+d)!] / [n! a! b! c! d!]
+- p_two_tailed = sum P(table) ที่ P(table) <= P(observed)
+- OR = ad / bc
+ข้อควรระวัง: ถ้า b หรือ c เป็น 0 โค้ดคืน OR เป็น Infinity
+
+5.4 McNemar Test
+สถานะ: PASS
+ตรวจสอบ: สำหรับ paired binary 2x2 ใช้ continuity correction
+สูตรที่ใช้:
+- chi2 = (|b - c| - 1)^2 / (b + c)
+- df = 1
+ข้อควรระวัง: ถ้า discordant pairs น้อยมาก ควรใช้ exact McNemar/binomial test
+
+5.5 Cochran's Q
+สถานะ: PASS / APPROX สำหรับ p-value
+ตรวจสอบ: ทดสอบ matched binary หลาย condition
+สูตรที่ใช้:
+- Q = [(k-1)(k sum(T_j^2) - T^2)] / [k sum(L_i) - sum(L_i^2)]
+- df = k - 1
+ข้อควรระวัง: ใช้ chi-square approximation
+
+5.6 Odds Ratio / Relative Risk
+สถานะ: PASS
+ตรวจสอบ: คำนวณ OR, RR, Risk Difference และ confidence interval บน log scale
+สูตรที่ใช้:
+- OR = ad / bc
+- RR = [a/(a+b)] / [c/(c+d)]
+- RD = a/(a+b) - c/(c+d)
+- SE_logOR = sqrt(1/a + 1/b + 1/c + 1/d)
+- CI_OR = exp(log(OR) +/- z x SE_logOR)
+- SE_logRR = sqrt(1/a - 1/(a+b) + 1/c - 1/(c+d))
+- CI_RR = exp(log(RR) +/- z x SE_logRR)
+ข้อควรระวัง: ตารางที่มี cell เป็น 0 ควรใช้ continuity correction หรือ exact method; โค้ดมี safeguard บางส่วน
+
+5.7 Cohen's Kappa
+สถานะ: PASS
+ตรวจสอบ: วัด agreement ของผู้ประเมิน 2 คนจากตารางหมวดหมู่
+สูตรที่ใช้:
+- Po = observed agreement
+- Pe = sum(row_prop_c x col_prop_c)
+- kappa = (Po - Pe) / (1 - Pe)
+ข้อควรระวัง: Kappa sensitive ต่อ prevalence และ marginal imbalance
+
+======================================================================
+6) CORRELATION AND REGRESSION
+======================================================================
+
+6.1 Correlation: Pearson, Spearman, Kendall
+สถานะ: PASS / PARTIAL สำหรับ Kendall ties
+ตรวจสอบ: Pearson ใช้ covariance form, Spearman คือ Pearson บน ranks, Kendall ใช้ concordant-discordant pair count
+สูตรที่ใช้:
+- Pearson r = sum((x_i-xbar)(y_i-ybar)) / sqrt(sum((x_i-xbar)^2) sum((y_i-ybar)^2))
+- t = r sqrt((n-2)/(1-r^2)), df = n - 2
+- Spearman rho = Pearson r ของ rank(x), rank(y)
+- Kendall tau = (C - D) / [n(n-1)/2]
+ข้อควรระวัง: Kendall ในโค้ดไม่ใช่ tau-b เต็ม จึงไม่ปรับ ties ของ x/y อย่างละเอียด
+
+6.2 Partial Correlation
+สถานะ: PASS
+ตรวจสอบ: residualize X และ Y ด้วยตัวแปร control แล้ว correlate residuals
+สูตรที่ใช้:
+- e_x = residual จาก X ~ controls
+- e_y = residual จาก Y ~ controls
+- r_partial = cor(e_x, e_y)
+- t = r sqrt(df/(1-r^2)), df = n - controls_count - 2
+
+6.3 Linear Regression
+สถานะ: PASS
+ตรวจสอบ: OLS ด้วย matrix normal equations, model summary, ANOVA, coefficients, CI, standardized beta, Durbin-Watson
+สูตรที่ใช้:
+- beta_hat = (X'X)^(-1) X'y
+- y_hat = X beta_hat
+- SST = sum((y_i - ybar)^2)
+- SSR = sum((y_hat_i - ybar)^2)
+- SSE = sum((y_i - y_hat_i)^2)
+- R^2 = SSR / SST
+- Adjusted R^2 = 1 - (1-R^2)(n-1)/(n-p-1)
+- MSE = SSE/(n-p-1)
+- F = (SSR/p) / MSE
+- SE(beta_j) = sqrt(MSE x diag((X'X)^(-1))_j)
+- t_j = beta_j / SE(beta_j)
+- Durbin-Watson = sum((e_i - e_{i-1})^2) / sum(e_i^2)
+ข้อควรระวัง: ต้องระวัง multicollinearity และ nonlinear relationship
+
+6.4 Multiple Regression
+สถานะ: PASS / PARTIAL สำหรับ variable selection
+ตรวจสอบ: ใช้ OLS เช่น linear regression และรองรับ Enter, Forward, Backward, Stepwise ด้วย p-in=.05, p-out=.10
+สูตรที่ใช้: ใช้ OLS ตามข้อ 6.3
+ข้อควรระวัง: Stepwise เป็น exploratory และเสี่ยง overfitting/p-hacking ควรรายงานว่าใช้ selection criterion ใด
+
+6.5 Hierarchical Regression
+สถานะ: PASS
+ตรวจสอบ: รัน regression เป็น block แล้วคำนวณ R-square change และ F change
+สูตรที่ใช้:
+- Delta R^2 = R^2_full - R^2_reduced
+- F_change = (Delta R^2 / df_change) / ((1 - R^2_full) / df_resid_full)
+ข้อควรระวัง: ต้องกำหนดลำดับ block ตาม theory ไม่ใช่ตามผลที่ต้องการ
+
+6.6 Logistic Regression
+สถานะ: PARTIAL
+ตรวจสอบ: Binary logistic regression ด้วย IRLS/Newton update, log-likelihood, AIC, Wald, OR
+สูตรที่ใช้:
+- logit(p_i) = ln(p_i/(1-p_i)) = b0 + b1 x1 + ... + bp xp
+- p_i = 1 / (1 + exp(-eta_i))
+- Log-likelihood = sum(y_i log(p_i) + (1-y_i) log(1-p_i))
+- AIC = -2LL + 2k
+- Wald = (b_j / SE_j)^2
+- OR_j = exp(b_j)
+ข้อควรระวัง: ยังไม่รองรับ robust SE, separation diagnostics, goodness-of-fit แบบ Hosmer-Lemeshow หรือ pseudo-R2 ครบทุกชนิด
+
+6.7 ROC / AUC
+สถานะ: PASS
+ตรวจสอบ: สร้าง ROC จาก actual 0/1 และ predicted probabilities, คำนวณ AUC, Youden J, sensitivity, specificity, PPV, NPV, accuracy
+สูตรที่ใช้:
+- TPR = TP / (TP + FN)
+- FPR = FP / (FP + TN)
+- AUC = trapezoidal area under ROC curve
+- Youden J = sensitivity + specificity - 1 = TPR - FPR
+- PPV = TP/(TP+FP), NPV = TN/(TN+FN)
+
+6.8 Discriminant Analysis
+สถานะ: PARTIAL
+ตรวจสอบ: Fisher Linear Discriminant Analysis สำหรับ exactly 2 groups ใช้ pooled covariance และ prior ตาม group size
+สูตรที่ใช้:
+- S_pooled = [(n1-1)S1 + (n2-1)S2] / (n1+n2-2)
+- score_g(x) = x' S_pooled^(-1) mean_g - 0.5 mean_g' S_pooled^(-1) mean_g + log(prior_g)
+- classification = group ที่ score สูงสุด
+ข้อควรระวัง: ไม่รองรับมากกว่า 2 groups และต้องระวัง singular covariance/multivariate normality/equal covariance
+
+6.9 Cluster Analysis
+สถานะ: PASS สำหรับ basic k-means
+ตรวจสอบ: standardize ตัวแปร, init centroid จาก k rows แรก, assign/update ด้วย squared Euclidean distance
+สูตรที่ใช้:
+- z_ij = (x_ij - mean_j) / SD_j
+- distance(i,c) = sum_j (z_ij - centroid_cj)^2
+- centroid_cj = mean(z_ij ใน cluster c)
+ข้อควรระวัง: centroid เริ่มต้นจากแถวแรกทำให้ผลไวต่อ order ของข้อมูล ควรลองหลาย seed ในงานจริง
+
+6.10 Path Analysis
+สถานะ: TODO
+ตรวจสอบ: ปุ่มแสดง alert ว่าต้องใช้ SEM engine หรือใช้ Multiple Regression เป็นทางเลือก
+สูตรที่ใช้: ยังไม่มีการคำนวณ path model จริงในแอป
+ข้อแนะนำ: ถ้าจะรองรับจริงควรใช้ SEM library และรายงาน fit indices เช่น chi-square, CFI, TLI, RMSEA, SRMR
+
+======================================================================
+7) RELIABILITY, FACTOR, ITEM ANALYSIS
+======================================================================
+
+7.1 Reliability: Cronbach's Alpha
+สถานะ: PASS
+ตรวจสอบ: คำนวณ alpha, item-total correlation, alpha if item deleted
+สูตรที่ใช้:
+- alpha = k/(k-1) x [1 - sum(s_i^2)/s_total^2]
+- item-total r = cor(item_i, total_score_minus_item_i)
+ข้อควรระวัง: Alpha เป็น internal consistency ของ sample ปัจจุบัน ไม่ใช่ validity ของแบบสอบถาม และสมมติ unidimensional/tau-equivalence ในทางปฏิบัติ
+
+7.2 Split-half Reliability
+สถานะ: PASS
+ตรวจสอบ: แบ่ง odd/even items, คำนวณ correlation และปรับ Spearman-Brown/Guttman
+สูตรที่ใช้:
+- r_half = cor(score_odd, score_even)
+- Spearman-Brown = 2r_half / (1 + r_half)
+- Guttman split-half = 2 x [1 - (var_odd + var_even) / var_total]
+
+7.3 Intraclass Correlation Coefficient (ICC)
+สถานะ: PASS / PARTIAL
+ตรวจสอบ: คำนวณ ICC(1,1), ICC(2,1), ICC(3,1) จาก mean squares
+สูตรที่ใช้โดยสรุป:
+- ICC(1,1) = (MSB - MSW) / (MSB + (k-1)MSW)
+- ICC(2,1) = (MSR - MSE) / (MSR + (k-1)MSE + k(MSC-MSE)/n)
+- ICC(3,1) = (MSR - MSE) / (MSR + (k-1)MSE)
+ข้อควรระวัง: การเลือก ICC type ต้องตรง design ของงาน เช่น one-way random, two-way random, two-way mixed
+
+7.4 Factor Analysis (EFA)
+สถานะ: PARTIAL
+ตรวจสอบ: สร้าง correlation matrix, eigenvalues ด้วย power iteration, Kaiser criterion > 1, KMO จาก inverse correlation
+สูตรที่ใช้:
+- Correlation matrix R
+- Eigenvalue/eigenvector จาก R
+- % variance = eigenvalue / sum(eigenvalues) x 100
+- KMO = sum(r_ij^2) / [sum(r_ij^2) + sum(p_ij^2)] โดย p_ij คือ partial correlations
+ข้อควรระวัง: ยังไม่ใช่ EFA เต็มรูปแบบแบบ principal axis/minres/ML, ยังไม่มี rotation, communalities/fit แบบครบถ้วน
+
+7.5 Confirmatory Factor Analysis (CFA)
+สถานะ: TODO
+ตรวจสอบ: ปุ่มแสดง alert ว่าต้องใช้ advanced matrix operations และแนะนำ AI Chat/EFA
+สูตรที่ใช้: ยังไม่มีการคำนวณ CFA จริง
+ข้อแนะนำ: ถ้าจะทำจริงควรใช้ SEM engine และรายงาน factor loadings, model fit, residuals, modification indices อย่างระมัดระวัง
+
+7.6 Item Analysis
+สถานะ: PASS / PARTIAL
+ตรวจสอบ: คำนวณ mean item score, SD, item-total correlation และจัดคุณภาพตาม cutoff
+สูตรที่ใช้:
+- Item mean = sum(item_score) / n
+- Item SD = sample SD
+- Item-total correlation = cor(item_score, total_score_minus_item)
+ข้อควรระวัง: Mean item score ในโค้ดเรียกว่า difficulty เหมาะกับข้อสอบ/scale บางชนิด; ถ้าเป็น dichotomous item ค่า p difficulty = proportion correct
+
+======================================================================
+8) EFFECT SIZE, BOOTSTRAP, POWER, SAMPLE SIZE
+======================================================================
+
+8.1 Cohen's d Effect Size Calculator
+สถานะ: PASS
+ตรวจสอบ: คำนวณ effect size สำหรับความแตกต่างของ mean
+สูตรที่ใช้:
+- Pooled SD = sqrt(((n1-1)s1^2 + (n2-1)s2^2)/(n1+n2-2))
+- Cohen's d = (xbar1 - xbar2) / pooled SD
+ข้อควรระวัง: ค่า d ใน sample เล็กอาจควรใช้ Hedges' g correction
+
+8.2 Odds Ratio Effect Size
+สถานะ: PASS
+ตรวจสอบ: คำนวณ OR และ CI จาก 2x2 table
+สูตรที่ใช้: ใช้สูตร OR, SE_logOR, CI_OR ตามข้อ 5.6
+
+8.3 Bootstrap
+สถานะ: PASS / APPROX
+ตรวจสอบ: Resampling with replacement, คำนวณ statistic ซ้ำ และใช้ percentile CI
+สูตรที่ใช้:
+- สุ่ม sample ขนาด n จากข้อมูลเดิมแบบ replacement จำนวน B ครั้ง
+- Bootstrap statistic = T(x*_b)
+- Percentile CI = quantile bootstrap ที่ alpha/2 และ 1-alpha/2
+ข้อควรระวัง: เป็น percentile bootstrap ไม่ใช่ BCa bootstrap
+
+8.4 Power Analysis
+สถานะ: APPROX
+ตรวจสอบ: ใช้สูตร normal approximation สำหรับ t-test, paired, ANOVA, correlation, chi-square
+สูตรที่ใช้ตัวอย่าง:
+- Independent t-test: n_per_group = ceil(2(Z_alpha + Z_beta)^2 / d^2)
+- Paired t-test: n = ceil((Z_alpha + Z_beta)^2 / d^2)
+- Correlation: n = ceil(((Z_alpha + Z_beta)/atanh(r))^2 + 3)
+- Chi-square: n = ceil((Z_alpha + Z_beta)^2 / w^2)
+ข้อควรระวัง: ไม่ใช่ G*Power แบบ noncentral distribution เต็ม จึงควรระบุว่าเป็น simplified/approximate
+
+8.5 Sample Size: Yamane, Cochran, Krejcie & Morgan, G*Power-like, Cohen Regression
+สถานะ: PASS สำหรับสูตร survey; APPROX สำหรับ G*Power-like และ Cohen table interpolation
+สูตรที่ใช้:
+- Yamane: n = N / (1 + N e^2)
+- Cochran: n0 = Z^2 p q / e^2
+- Krejcie & Morgan: S = X^2 N P(1-P) / [d^2(N-1) + X^2 P(1-P)]
+- G*Power-like t-test: n = 2[(Z_alpha + Z_beta)/d]^2
+- Regression f^2 = R2_change / (1 - R2_full)
+- Cohen regression: N = lambda(1 - R2_full) / R2_change + w, ใช้ตาราง lambda และ interpolation
+ข้อควรระวัง: สูตร survey ไม่ทดแทน power analysis ของ hypothesis test และสูตร G*Power-like เป็น approximation
+
+======================================================================
+9) SURVIVAL, TIME SERIES, SPATIAL
+======================================================================
+
+9.1 Survival Analysis: Kaplan-Meier
+สถานะ: PASS
+ตรวจสอบ: สร้าง survival curve จาก time และ event
+สูตรที่ใช้:
+- S(t) = product_{t_i <= t} (1 - d_i/n_i)
+- Median survival = เวลาแรกที่ S(t) <= 0.5
+- Mean survival ในโค้ดประมาณด้วยพื้นที่ใต้ survival curve
+ข้อควรระวัง: ต้อง code event/censor ให้ถูกต้อง โดย event >= 0.5 ถูกแปลงเป็น event=1
+
+9.2 Log-rank Test
+สถานะ: PASS / APPROX
+ตรวจสอบ: รองรับ comparison 2 groups
+สูตรที่ใช้:
+- E_1i = n_1i d_i / n_i
+- Var(O-E) ใช้ variance ของ log-rank
+- chi2 = (O_1 - E_1)^2 / Var(O_1 - E_1)
+- df = 1
+ข้อควรระวัง: โค้ดรองรับเฉพาะ 2 groups
+
+9.3 Cox Regression
+สถานะ: PARTIAL
+ตรวจสอบ: Cox model ต่อ covariate ด้วย partial likelihood approach และรายงาน HR, SE, Wald, CI
+สูตรที่ใช้:
+- h(t|x) = h0(t) exp(beta x)
+- HR = exp(beta)
+- Wald = (beta/SE)^2
+- CI_HR = exp(beta +/- z SE)
+ข้อควรระวัง: โค้ดทำแบบพื้นฐาน/ส่วนใหญ่เป็น univariate ต่อ covariate ไม่ใช่ Cox multivariable diagnostics เต็ม และยังไม่มี proportional hazards diagnostics
+
+9.4 Time Series
+สถานะ: PARTIAL
+ตรวจสอบ: moving average/trend/seasonal decomposition แบบ additive, forecast, RMSE, ACF(1)
+สูตรที่ใช้:
+- Linear trend: y_t = a + bt จาก OLS
+- Moving average = mean ของช่วง window
+- Seasonal effect_s = mean(y_t - trend_t) สำหรับตำแหน่งฤดูกาล s
+- Forecast = trend_future + seasonal_effect
+- RMSE = sqrt(mean(residual^2))
+- ACF(1) = cor(y_t, y_{t-1})
+ข้อควรระวัง: ไม่ใช่ ARIMA/ETS full model และไม่มี confidence intervals ของ forecast
+
+9.5 Spatial Analysis
+สถานะ: UI / PASS สำหรับ descriptive spatial summary
+ตรวจสอบ: แสดง map/heatmap/markers และสรุปพิกัด/กลุ่ม/น้ำหนัก
+สูตรที่ใช้:
+- Centroid latitude = mean(lat)
+- Centroid longitude = mean(lng)
+- Weighted centroid = sum(w_i coord_i) / sum(w_i)
+- ระยะทางใช้ haversine distance โดยสรุปจากจุดไป centroid
+ข้อควรระวัง: เป็น descriptive mapping ไม่ใช่ spatial autocorrelation, clustering inference, หรือ geostatistical model
+
+======================================================================
+10) TOPICS THAT ARE PLACEHOLDER OR NEED ENGINE UPGRADE
+======================================================================
+
+10.1 CFA
+สถานะ: TODO
+เหตุผล: ปุ่มยัง alert ว่าต้องใช้ advanced matrix operations
+สิ่งที่ต้องเพิ่มถ้าพัฒนา: SEM optimizer, covariance model, chi-square fit, CFI, TLI, RMSEA, SRMR, factor loadings, standard errors
+
+10.2 Path Analysis
+สถานะ: TODO
+เหตุผล: ปุ่มยัง alert ว่าต้องใช้ SEM engine
+สิ่งที่ต้องเพิ่มถ้าพัฒนา: path model specification, direct/indirect effects, bootstrap indirect effects, model fit indices
+
+10.3 MANOVA
+สถานะ: APPROX / ต้องระบุชัด
+เหตุผล: ปัจจุบันคำนวณ Wilks' Lambda แบบ simplified จาก univariate SS ไม่ใช่ H/E matrix เต็ม
+สิ่งที่ต้องเพิ่มถ้าพัฒนา: multivariate SSCP matrices, exact/approx F transformations, Pillai, Hotelling-Lawley, Roy
+
+10.4 EFA
+สถานะ: PARTIAL / ควรระบุว่า preliminary EFA
+เหตุผล: ปัจจุบันเป็น eigen/KMO เบื้องต้น ยังไม่มี rotation และ extraction methods แบบเต็ม
+สิ่งที่ต้องเพิ่มถ้าพัฒนา: principal axis factoring, ML factor analysis, Varimax/Promax rotation, communalities, factor scores
+
+======================================================================
+11) QUICK VALIDATION SUMMARY BY MENU TOPIC
+======================================================================
+
+Home/Upload: UI
+Demographics: PASS
+Descriptive: PASS
+Numeric: PASS
+Nominal: PASS
+Likert: PASS
+Interval: PASS
+Outlier: PASS
+Normality: APPROX
+Q-Q Plot: PASS
+Assumption Normality: APPROX
+Assumption Levene: PASS
+Assumption VIF / Multicollinearity: PASS
+One-Sample t-test: PASS
+Independent t-test: PASS
+Paired t-test: PASS
+One-way ANOVA: PASS
+Two-way ANOVA: PARTIAL
+Repeated Measures ANOVA: PARTIAL
+ANCOVA: PARTIAL
+MANOVA: APPROX / PARTIAL
+Welch ANOVA: PASS
+Post-hoc Tests: PASS / APPROX by method
+Games-Howell: PASS / APPROX fallback
+Dunnett: APPROX
+Mann-Whitney U: PASS / APPROX p-value
+Wilcoxon Signed-Rank: PASS / APPROX p-value
+Kruskal-Wallis: PASS / APPROX p-value
+Friedman: PASS / APPROX p-value
+Median Test: PASS
+Runs Test: PASS / APPROX
+KS 2-sample: APPROX
+Sign Test: PASS
+Binomial Test: PASS
+Chi-square: PASS
+CrossTab: PASS
+Fisher Exact: PASS
+McNemar: PASS
+Cochran Q: PASS / APPROX
+OR/RR: PASS
+Kappa: PASS
+Correlation: PASS / PARTIAL for Kendall ties
+Partial Correlation: PASS
+Linear Regression: PASS
+Multiple Regression: PASS / PARTIAL for stepwise
+Hierarchical Regression: PASS
+Logistic Regression: PARTIAL
+ROC/AUC: PASS
+Discriminant Analysis: PARTIAL
+Cluster Analysis: PASS basic
+Reliability/Cronbach: PASS
+Split-half: PASS
+ICC: PASS / PARTIAL
+Factor Analysis EFA: PARTIAL
+CFA: TODO
+Item Analysis: PASS / PARTIAL
+Path Analysis: TODO
+Bootstrap: PASS / APPROX
+Power Analysis: APPROX
+Sample Size: PASS for survey formulas, APPROX for G*Power-like
+Missing Data: PASS descriptive only
+Survival/Kaplan-Meier: PASS
+Log-rank: PASS / APPROX
+Cox Regression: PARTIAL
+Time Series: PARTIAL
+Spatial Analysis: UI / PASS descriptive
+Charts: UI
+AI Chat/Settings: UI
+Templates: UI
+
+======================================================================
+12) แหล่งอ้างอิงหลัก
+======================================================================
+
+แหล่งออนไลน์ที่ใช้ตรวจแนวทาง
+1. NIST/SEMATECH e-Handbook of Statistical Methods. https://www.itl.nist.gov/div898/handbook/ และ DOI: https://doi.org/10.18434/M32189
+2. Penn State STAT 501 Regression Methods. https://online.stat.psu.edu/stat501/
+3. Penn State STAT 504 Analysis of Discrete Data. https://online.stat.psu.edu/statprogram/stat504
+4. UCLA OARC/IDRE, Choosing the Correct Statistical Test in SAS, Stata, SPSS and R. https://stats.oarc.ucla.edu/other/mult-pkg/whatstat/
+5. R Documentation, shapiro.test: Shapiro-Wilk Normality Test. https://stat.ethz.ch/R-manual/R-devel/RHOME/library/stats/html/shapiro.test.html
+6. NCSS PASS Documentation, Power Analysis and Sample Size references. https://www.ncss.com/software/pass/pass-documentation/
+
+ตำราและบทความมาตรฐาน
+7. Agresti, A. (2013). Categorical Data Analysis (3rd ed.). Wiley.
+8. Cohen, J. (1988). Statistical Power Analysis for the Behavioral Sciences (2nd ed.). Lawrence Erlbaum.
+9. Cohen, J. (1960). A coefficient of agreement for nominal scales. Educational and Psychological Measurement, 20(1), 37-46.
+10. Cochran, W. G. (1977). Sampling Techniques (3rd ed.). Wiley.
+11. Cox, D. R. (1972). Regression models and life-tables. Journal of the Royal Statistical Society: Series B, 34(2), 187-220.
+12. Cronbach, L. J. (1951). Coefficient alpha and the internal structure of tests. Psychometrika, 16, 297-334.
+13. Field, A. (2013). Discovering Statistics Using IBM SPSS Statistics (4th ed.). Sage.
+14. Hair, J. F., Black, W. C., Babin, B. J., & Anderson, R. E. (2019). Multivariate Data Analysis (8th ed.). Cengage.
+15. Hosmer, D. W., Lemeshow, S., & Sturdivant, R. X. (2013). Applied Logistic Regression (3rd ed.). Wiley.
+16. Kaplan, E. L., & Meier, P. (1958). Nonparametric estimation from incomplete observations. Journal of the American Statistical Association, 53(282), 457-481.
+17. Kaiser, H. F. (1974). An index of factorial simplicity. Psychometrika, 39, 31-36.
+18. Krejcie, R. V., & Morgan, D. W. (1970). Determining sample size for research activities. Educational and Psychological Measurement, 30(3), 607-610.
+19. Koo, T. K., & Li, M. Y. (2016). A guideline of selecting and reporting intraclass correlation coefficients for reliability research. Journal of Chiropractic Medicine, 15(2), 155-163.
+20. Nunnally, J. C., & Bernstein, I. H. (1994). Psychometric Theory (3rd ed.). McGraw-Hill.
+21. Royston, P. (1995). Remark AS R94: A remark on Algorithm AS 181: The W-test for normality. Applied Statistics, 44(4), 547-551.
+22. Shapiro, S. S., & Wilk, M. B. (1965). An analysis of variance test for normality. Biometrika, 52(3/4), 591-611.
+23. Shrout, P. E., & Fleiss, J. L. (1979). Intraclass correlations: Uses in assessing rater reliability. Psychological Bulletin, 86(2), 420-428.
+24. Yamane, T. (1967). Statistics: An Introductory Analysis (2nd ed.). Harper and Row.
+
+ข้อเสนอแนะการใช้งานในรายงานวิจัย
+1. หัวข้อที่สถานะ PASS สามารถรายงานผลได้ตามปกติ แต่ยังต้องตรวจสมมติฐานและชนิดข้อมูล
+2. หัวข้อที่สถานะ APPROX ให้เขียนกำกับว่าใช้ approximation/simplified method
+3. หัวข้อที่สถานะ PARTIAL ให้ใช้เป็น exploratory หรือเบื้องต้น หากต้องการตีพิมพ์ควรตรวจซ้ำด้วย R/SPSS/JASP/jamovi หรือ package เฉพาะทาง
+4. หัวข้อที่สถานะ TODO ไม่ควรนำไปอ้างว่าแอปคำนวณผลสถิติแล้ว
