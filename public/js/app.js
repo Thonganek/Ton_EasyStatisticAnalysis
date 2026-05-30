@@ -21,6 +21,39 @@
         chatHistory: []
     };
 
+    var UI_THEMES = ['orange', 'blue', 'emerald', 'violet', 'slate'];
+
+    function getSavedTheme() {
+        try {
+            var saved = localStorage.getItem('eesy_ui_theme');
+            return UI_THEMES.indexOf(saved) !== -1 ? saved : 'orange';
+        } catch (e) {
+            return 'orange';
+        }
+    }
+
+    function setAppTheme(theme) {
+        if (UI_THEMES.indexOf(theme) === -1) theme = 'orange';
+        document.documentElement.setAttribute('data-theme', theme);
+        try {
+            localStorage.setItem('eesy_ui_theme', theme);
+        } catch (e) { /* localStorage may not be available */ }
+        updateThemeControls(theme);
+    }
+
+    function updateThemeControls(theme) {
+        var swatches = document.querySelectorAll('.theme-swatch[data-theme]');
+        swatches.forEach(function(btn) {
+            var isActive = btn.getAttribute('data-theme') === theme;
+            btn.classList.toggle('is-active', isActive);
+            btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+        });
+    }
+
+    function initThemeControls() {
+        setAppTheme(getSavedTheme());
+    }
+
     // =========================================================================
     // Utility: Format Number
     // =========================================================================
@@ -5657,6 +5690,8 @@
     // =========================================================================
 
     document.addEventListener('DOMContentLoaded', function () {
+        initThemeControls();
+
         // File upload listener
         var fileInput = document.getElementById('file-upload');
         if (fileInput) {
@@ -6952,6 +6987,7 @@
 
     window.handleLogin = handleLogin;
     window.handleLogout = handleLogout;
+    window.setAppTheme = setAppTheme;
     window.loadSheet = loadSheet;
     window.navigateTo = navigateTo;
     window.toggleSidebar = toggleSidebar;

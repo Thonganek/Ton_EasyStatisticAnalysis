@@ -4,6 +4,16 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Easy Statistic Analysis Tools</title>
+    <script>
+        (function () {
+            try {
+                var theme = localStorage.getItem('eesy_ui_theme') || 'orange';
+                document.documentElement.setAttribute('data-theme', theme);
+            } catch (e) {
+                document.documentElement.setAttribute('data-theme', 'orange');
+            }
+        })();
+    </script>
     <link rel="stylesheet" href="./css/style.css">
     <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jstat@latest/dist/jstat.min.js"></script>
@@ -22,6 +32,13 @@
         <p class="login-subtitle">Professional Statistical Analysis Suite for Researchers</p>
         <p class="login-developer">นายจรัญญู ทองเอนก (Jarunyoo Thonganek)</p>
         <span class="version-badge">หากต้องการใช้งานติดต่อผ่านไลน์</span>
+        <div class="theme-picker theme-picker-login" aria-label="เลือกธีมสี">
+            <button type="button" class="theme-swatch theme-swatch-orange" data-theme="orange" onclick="setAppTheme('orange')" aria-label="ธีมสีส้มอิฐ"></button>
+            <button type="button" class="theme-swatch theme-swatch-blue" data-theme="blue" onclick="setAppTheme('blue')" aria-label="ธีมสีน้ำเงิน"></button>
+            <button type="button" class="theme-swatch theme-swatch-emerald" data-theme="emerald" onclick="setAppTheme('emerald')" aria-label="ธีมสีเขียว"></button>
+            <button type="button" class="theme-swatch theme-swatch-violet" data-theme="violet" onclick="setAppTheme('violet')" aria-label="ธีมสีม่วง"></button>
+            <button type="button" class="theme-swatch theme-swatch-slate" data-theme="slate" onclick="setAppTheme('slate')" aria-label="ธีมสีเทาเข้ม"></button>
+        </div>
         <div class="qr-section">
             <img src="./qrcode.jpg" alt="LINE QR Code" class="qr-image">
         </div>
@@ -80,6 +97,19 @@
         <div class="sidebar-logo">
             <span class="sidebar-title">📊 Easy Statistic</span>
             <span class="sidebar-caption">Version 2.0.0</span>
+        </div>
+
+        <div class="sidebar-divider"></div>
+
+        <div class="sidebar-section theme-picker theme-picker-sidebar" aria-label="เลือกธีมสี">
+            <label class="sidebar-label">Theme สีหน้าจอ</label>
+            <div class="theme-options">
+                <button type="button" class="theme-swatch theme-swatch-orange" data-theme="orange" onclick="setAppTheme('orange')" aria-label="ธีมสีส้มอิฐ"></button>
+                <button type="button" class="theme-swatch theme-swatch-blue" data-theme="blue" onclick="setAppTheme('blue')" aria-label="ธีมสีน้ำเงิน"></button>
+                <button type="button" class="theme-swatch theme-swatch-emerald" data-theme="emerald" onclick="setAppTheme('emerald')" aria-label="ธีมสีเขียว"></button>
+                <button type="button" class="theme-swatch theme-swatch-violet" data-theme="violet" onclick="setAppTheme('violet')" aria-label="ธีมสีม่วง"></button>
+                <button type="button" class="theme-swatch theme-swatch-slate" data-theme="slate" onclick="setAppTheme('slate')" aria-label="ธีมสีเทาเข้ม"></button>
+            </div>
         </div>
 
         <div class="sidebar-divider"></div>
