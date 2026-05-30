@@ -1416,7 +1416,7 @@
         var div = document.createElement('div');
         div.className = 'lk-group-box';
         div.setAttribute('data-group-idx', idx);
-        div.style.cssText = 'border:1px solid #c7d2fe;border-radius:8px;padding:10px;margin-bottom:10px;background:#f8fafc';
+        div.style.cssText = 'border:1px solid #fed7aa;border-radius:8px;padding:10px;margin-bottom:10px;background:#fff7ed';
 
         var html = '<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">';
         html += '<input type="text" class="form-input lk-group-name" value="' + groupName + '" placeholder="ชื่อด้าน" style="flex:1;font-weight:600;font-size:0.9rem">';
@@ -1449,9 +1449,9 @@
                 }
             }
             group.vars.push(varName);
-            btn.style.background = '#4f46e5';
+            btn.style.background = '#ea580c';
             btn.style.color = '#fff';
-            btn.style.borderColor = '#4f46e5';
+            btn.style.borderColor = '#ea580c';
         } else {
             group.vars.splice(idx, 1);
             btn.style.background = '';
@@ -1496,7 +1496,7 @@
             var div = document.createElement('div');
             div.className = 'lk-group-box';
             div.setAttribute('data-group-idx', idx);
-            div.style.cssText = 'border:1px solid #c7d2fe;border-radius:8px;padding:10px;margin-bottom:10px;background:#f8fafc';
+            div.style.cssText = 'border:1px solid #fed7aa;border-radius:8px;padding:10px;margin-bottom:10px;background:#fff7ed';
             var usedByOther = [];
             likertGroups.forEach(function(g2, gi2) { if (gi2 !== idx) usedByOther = usedByOther.concat(g2.vars); });
             var availableVars = vars.filter(function(v) { return usedByOther.indexOf(v) === -1; });
@@ -1508,7 +1508,7 @@
             html += '<div class="lk-group-var-picker" data-gidx="' + idx + '" style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px">';
             availableVars.forEach(function(v) {
                 var isSelected = g.vars.indexOf(v) !== -1;
-                html += '<button type="button" class="suggestion-btn-sm lk-var-btn" data-var="' + v + '" data-gidx="' + idx + '" onclick="toggleLikertGroupVar(this)" style="font-size:0.76rem;' + (isSelected ? 'background:#4f46e5;color:#fff;border-color:#4f46e5' : '') + '">' + v + '</button>';
+                html += '<button type="button" class="suggestion-btn-sm lk-var-btn" data-var="' + v + '" data-gidx="' + idx + '" onclick="toggleLikertGroupVar(this)" style="font-size:0.76rem;' + (isSelected ? 'background:#ea580c;color:#fff;border-color:#ea580c' : '') + '">' + v + '</button>';
             });
             html += '</div>';
             html += '<div class="lk-group-selected" data-gidx="' + idx + '" style="min-height:24px;font-size:0.8rem;color:#059669;font-weight:600">';
@@ -5556,7 +5556,7 @@
             html += 'th,td{border:1px solid #000;padding:4px 8px;text-align:center;font-size:12pt;}';
             html += 'th{background:#f0f0f0;font-weight:bold;}';
             html += 'h2,h3,h4{margin:10px 0;}';
-            html += '.ai-text{margin:10px 0;padding:10px;background:#f9f9f9;border-left:3px solid #4a90d9;}';
+            html += '.ai-text{margin:10px 0;padding:10px;background:#fff7ed;border-left:3px solid #ea580c;}';
             html += '.word-table{mso-table-lspace:0pt;mso-table-rspace:0pt;}';
             if (isLikertWord) {
                 html += '@page WordSection1{size:841.95pt 595.35pt;mso-page-orientation:landscape;margin:28.35pt 28.35pt 28.35pt 28.35pt;}';
@@ -5566,11 +5566,11 @@
                 html += '.likert-word-content h3{font-size:14pt;margin:12pt 0 5pt;}';
                 html += '.likert-main{table-layout:fixed;margin:6pt 0 10pt;}';
                 html += '.likert-main th,.likert-main td{font-size:10.5pt;padding:3pt 3pt;line-height:1.15;vertical-align:middle;}';
-                html += '.likert-main th{background:#d9eaf7;}';
+                html += '.likert-main th{background:#fed7aa;}';
                 html += '.likert-main .col-variable{text-align:left;}';
                 html += '.likert-main .score-cell{font-size:9.5pt;}';
-                html += '.likert-main .group-row td{background:#eef5ff;font-weight:bold;}';
-                html += '.likert-main .summary-row td{background:#f3f4f6;font-weight:bold;}';
+                html += '.likert-main .group-row td{background:#fff7ed;font-weight:bold;}';
+                html += '.likert-main .summary-row td{background:#f8eadf;font-weight:bold;}';
                 html += '.likert-extra th,.likert-extra td{font-size:11pt;padding:3pt 5pt;}';
             }
             html += '</style></head><body' + (isLikertWord ? ' class="likert-word"' : '') + '>';
