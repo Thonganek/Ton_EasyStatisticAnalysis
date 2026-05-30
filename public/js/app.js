@@ -5447,11 +5447,109 @@
         }
     }
 
+    function getLikertWordColumns(result) {
+        var data = result.data || [];
+        var sourceColumns = result.columns && result.columns.length ? result.columns.slice() : (data[0] ? Object.keys(data[0]) : []);
+        function hasColumn(col) {
+            if (sourceColumns.indexOf(col) !== -1) return true;
+            return data.some(function(row) { return Object.prototype.hasOwnProperty.call(row, col); });
+        }
+
+        var scoreColumns = ['5', '4', '3', '2', '1'].filter(hasColumn);
+        if (scoreColumns.length === 0) {
+            scoreColumns = sourceColumns.filter(function(col) {
+                return /^[1-9]$/.test(String(col));
+            }).sort(function(a, b) {
+                return parseInt(b, 10) - parseInt(a, 10);
+            });
+        }
+
+        return ['No.', 'Variable'].concat(scoreColumns, ['Mean', 'S.D.', 'Interpretation']).filter(function(col, idx, cols) {
+            return hasColumn(col) && cols.indexOf(col) === idx;
+        });
+    }
+
+    function getLikertWordColumnWidths(columns) {
+        var scoreCount = columns.filter(function(col) { return /^[1-9]$/.test(String(col)); }).length;
+        var noWidth = 7;
+        var variableWidth = scoreCount >= 5 ? 24 : 34;
+        var meanWidth = 7;
+        var sdWidth = 7;
+        var interpretationWidth = scoreCount >= 5 ? 15 : 16;
+        var scoreWidth = scoreCount > 0
+            ? (100 - noWidth - variableWidth - meanWidth - sdWidth - interpretationWidth) / scoreCount
+            : 0;
+        var widths = {
+            'No.': noWidth + '%',
+            'Variable': variableWidth + '%',
+            'Mean': meanWidth + '%',
+            'S.D.': sdWidth + '%',
+            'Interpretation': interpretationWidth + '%'
+        };
+        columns.forEach(function(col) {
+            if (/^[1-9]$/.test(String(col))) widths[col] = scoreWidth.toFixed(2) + '%';
+        });
+        return widths;
+    }
+
+    function buildWordTable(data, columns, options) {
+        if (!data || data.length === 0) return '<p>No data to display.</p>';
+        options = options || {};
+        var explicitCols = !!columns;
+        if (!columns) columns = Object.keys(data[0]);
+        if (!explicitCols && !options.preserveOrder) columns = reorderColumns(columns);
+
+        var tableClass = 'result-table word-table' + (options.className ? ' ' + options.className : '');
+        var html = '<table class="' + tableClass + '">';
+        if (options.colWidths) {
+            html += '<colgroup>';
+            columns.forEach(function(col) {
+                html += '<col' + (options.colWidths[col] ? ' style="width:' + options.colWidths[col] + '"' : '') + '>';
+            });
+            html += '</colgroup>';
+        }
+
+        html += '<thead><tr>';
+        columns.forEach(function(col) {
+            var label = options.headerLabels && options.headerLabels[col] ? options.headerLabels[col] : col;
+            html += '<th>' + escapeHtml(String(label)) + '</th>';
+        });
+        html += '</tr></thead><tbody>';
+
+        data.forEach(function(row) {
+            var rowClass = options.rowClass ? options.rowClass(row) : '';
+            html += '<tr' + (rowClass ? ' class="' + rowClass + '"' : '') + '>';
+            columns.forEach(function(col) {
+                var val = row[col];
+                var cellClass = options.cellClass ? options.cellClass(col, row) : '';
+                if (val === null || val === undefined || (typeof val === 'number' && isNaN(val))) {
+                    html += '<td' + (cellClass ? ' class="' + cellClass + '"' : '') + '></td>';
+                } else {
+                    html += '<td' + (cellClass ? ' class="' + cellClass + '"' : '') + '>' + escapeHtml(String(val)) + '</td>';
+                }
+            });
+            html += '</tr>';
+        });
+
+        html += '</tbody></table>';
+        return html;
+    }
+
     function exportWord(prefix) {
         var result = state.results[prefix];
         if (!result) { alert('No results to export. Please run analysis first.'); return; }
 
         try {
+            var isLikertWord = prefix === 'lk';
+            var likertColumns = isLikertWord ? getLikertWordColumns(result) : null;
+            var likertHeaderLabels = {
+                'No.': 'ลำดับ',
+                'Variable': 'ตัวแปร',
+                'Mean': 'mean',
+                'S.D.': 'SD',
+                'Interpretation': 'การแปลผล'
+            };
+
             var html = '<html><head><meta charset="UTF-8"><style>';
             html += 'body{font-family:TH Sarabun New,Sarabun,sans-serif;font-size:14pt;margin:2cm;}';
             html += 'table{border-collapse:collapse;width:100%;margin:10px 0;}';
@@ -5459,24 +5557,69 @@
             html += 'th{background:#f0f0f0;font-weight:bold;}';
             html += 'h2,h3,h4{margin:10px 0;}';
             html += '.ai-text{margin:10px 0;padding:10px;background:#f9f9f9;border-left:3px solid #4a90d9;}';
-            html += '</style></head><body>';
+            html += '.word-table{mso-table-lspace:0pt;mso-table-rspace:0pt;}';
+            if (isLikertWord) {
+                html += '@page WordSection1{size:841.95pt 595.35pt;mso-page-orientation:landscape;margin:28.35pt 28.35pt 28.35pt 28.35pt;}';
+                html += 'div.WordSection1{page:WordSection1;}';
+                html += 'body.likert-word{margin:0;font-size:13pt;}';
+                html += '.likert-word-content h2{font-size:18pt;text-align:center;margin:0 0 8pt;}';
+                html += '.likert-word-content h3{font-size:14pt;margin:12pt 0 5pt;}';
+                html += '.likert-main{table-layout:fixed;margin:6pt 0 10pt;}';
+                html += '.likert-main th,.likert-main td{font-size:10.5pt;padding:3pt 3pt;line-height:1.15;vertical-align:middle;}';
+                html += '.likert-main th{background:#d9eaf7;}';
+                html += '.likert-main .col-variable{text-align:left;}';
+                html += '.likert-main .score-cell{font-size:9.5pt;}';
+                html += '.likert-main .group-row td{background:#eef5ff;font-weight:bold;}';
+                html += '.likert-main .summary-row td{background:#f3f4f6;font-weight:bold;}';
+                html += '.likert-extra th,.likert-extra td{font-size:11pt;padding:3pt 5pt;}';
+            }
+            html += '</style></head><body' + (isLikertWord ? ' class="likert-word"' : '') + '>';
+            html += '<div' + (isLikertWord ? ' class="WordSection1 likert-word-content"' : '') + '>';
 
             if (result.title) html += '<h2>' + escapeHtml(result.title) + '</h2>';
 
-            // Extras tables
-            if (result.extras) {
-                result.extras.forEach(function (extra) {
+            function appendExtras() {
+                if (!result.extras) return;
+                result.extras.forEach(function(extra) {
                     if (extra.title) html += '<h3>' + escapeHtml(extra.title) + '</h3>';
                     if (extra.data && extra.data.length > 0) {
-                        html += buildTable(extra.data);
+                        html += buildWordTable(extra.data, null, { className: isLikertWord ? 'likert-extra' : '' });
                     }
                     if (extra.html) html += extra.html;
                 });
             }
 
-            // Main table
-            if (result.data && result.data.length > 0) {
-                html += buildTable(result.data);
+            function appendMainTable() {
+                if (!result.data || result.data.length === 0) return;
+                if (isLikertWord) {
+                    html += buildWordTable(result.data, likertColumns, {
+                        className: 'likert-main',
+                        preserveOrder: true,
+                        headerLabels: likertHeaderLabels,
+                        colWidths: getLikertWordColumnWidths(likertColumns),
+                        rowClass: function(row) {
+                            var variableText = String(row.Variable || '').trim();
+                            if (row['No.'] === '' && variableText && !row.Mean) return 'group-row';
+                            if (row['No.'] === '' && variableText) return 'summary-row';
+                            return '';
+                        },
+                        cellClass: function(col) {
+                            if (col === 'Variable') return 'col-variable';
+                            if (/^[1-9]$/.test(String(col))) return 'score-cell';
+                            return '';
+                        }
+                    });
+                } else {
+                    html += buildWordTable(result.data, result.columns || null);
+                }
+            }
+
+            if (isLikertWord) {
+                appendMainTable();
+                appendExtras();
+            } else {
+                appendExtras();
+                appendMainTable();
             }
 
             // AI result
@@ -5485,7 +5628,7 @@
                 html += state.aiResults[prefix];
             }
 
-            html += '</body></html>';
+            html += '</div></body></html>';
 
             var blob = new Blob(['\ufeff' + html], { type: 'application/msword' });
             var url = URL.createObjectURL(blob);
